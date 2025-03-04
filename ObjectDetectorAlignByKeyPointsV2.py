@@ -10,6 +10,8 @@ global bitThresh
 global rotationSpeed 
 global numOfKeypoints
 global kpGraphRigidity
+global deviationThreshold 
+deviationThreshold = 20 
 kpGraphRigidity = 2
 numOfKeypoints = 500
 rotationSpeed = 20 # The camera rotation speed in degrees per second
@@ -94,7 +96,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         gray2 = cv2.cvtColor(raw_image2, cv2.COLOR_BGR2GRAY)
         
         # Align the two frames
-        alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2, crop_size)
+        alligned_image1, alligned_image2, top_left, right_bottom, dev_pts = align_images( gray1, gray2, crop_size)
         diff = cv2.absdiff(alligned_image1, alligned_image2)
         frame_queue.put(diff)
         
@@ -122,10 +124,17 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
                 wext = int(w*(boxScale-1)/2)
                 hext = int(h*(boxScale-1)/2)
                 cv2.rectangle(raw_image2, (x-wext, y-hext), (x + w + wext, y + h + hext), (0, 0, 255), 2)
+
         # Hihglight the maxLoc position
         selectionSide = 30
         cv2.rectangle(raw_image2, (maxLoc[0]-selectionSide//2 + top_left[0], maxLoc[1]-selectionSide//2 + top_left[1]), (maxLoc[0] + selectionSide//2 + top_left[0], maxLoc[1] + selectionSide//2 + top_left[1]), (0, 255, 0), 2)
-        
+
+        # Display deviated points
+        boxSize = 30
+        for pt in dev_pts:
+            x, y = int(pt[0][0]), int(pt[0][1])  # Unpack coordinates properly
+            cv2.rectangle(raw_image2, (x - boxSize // 2, y - boxSize // 2), (x + boxSize // 2, y + boxSize // 2), (255, 0, 0), 2)
+
         frame_queue.put(raw_image2)
         T1 += timeStep
     
@@ -135,6 +144,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
 def align_images(image1, image2, crop_size=20):
     global numOfKeypoints
     global kpGraphRigidity
+    global deviationThreshold
     orb = cv2.ORB_create(numOfKeypoints)
     keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
     keypoints2, descriptors2 = orb.detectAndCompute(image2, None)
@@ -167,6 +177,20 @@ def align_images(image1, image2, crop_size=20):
     src_pts = np.float32([keypoints2[m.trainIdx].pt for m in rigid_matches]).reshape(-1, 1, 2)
     dst_pts = np.float32([keypoints1[m.queryIdx].pt for m in rigid_matches]).reshape(-1, 1, 2)
     
+    # Prepare matching keypoints that were filtered as deviated points
+    filtered_matches = []
+    valid_indices = set(range(len(dst_pts)))  # Ensure indices are within bounds
+    
+    mean_dst = np.mean([np.linalg.norm(dst_pts[m.queryIdx]) for m in rigid_matches if m.queryIdx in valid_indices])
+    
+    for m in rigid_matches:
+        if m.queryIdx in valid_indices:
+            deviation = abs(np.linalg.norm(dst_pts[m.queryIdx]) - mean_dst)
+            if deviation <= deviationThreshold:
+                filtered_matches.append(m)
+
+    dev_pts = np.float32([keypoints2[m.trainIdx].pt for m in filtered_matches]).reshape(-1, 1, 2)
+
     M, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
     align_image2 = cv2.warpAffine(image2, M, (image1.shape[1], image1.shape[0]))
 
@@ -181,7 +205,7 @@ def align_images(image1, image2, crop_size=20):
     align_image1 = image1[y:y + h, x:x + w]
     align_image2 = align_image2[y:y + h, x:x + w]
     
-    return align_image1, align_image2, left_top, right_bottom
+    return align_image1, align_image2, left_top, right_bottom, dev_pts
 
 def split_grid(image, grid_size=(4, 4), overlap=20):
     h, w = image.shape[:2]
@@ -217,8 +241,7 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.75
-process_video("pidor2.mp4", startTime=0
-              , timeStep=0.5, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("orlan.mp4", startTime=11, timeStep=0.5, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
