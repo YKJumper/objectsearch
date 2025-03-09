@@ -10,8 +10,8 @@ global bitThresh
 global rotationSpeed 
 global numOfKeypoints
 global kpGraphRigidity
-kpGraphRigidity = 2
-numOfKeypoints = 500
+kpGraphRigidity = 1
+numOfKeypoints = 250
 rotationSpeed = 20 # The camera rotation speed in degrees per second
 bitThresh = 40  # Initial threshold value
 bitBrightSelector = 0.75 # Initial bright selector value
@@ -138,7 +138,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
     if not cap.isOpened():
         print("Error: Could not open video file.")
         return
-    
+
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     total_time = total_frames / fps
@@ -151,10 +151,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
     while T1 + timeStep <= endTime:
         raw_image1 = get_frame_at_time(cap, fps, T1)
         raw_image2 = get_frame_at_time(cap, fps, T1 + timeDelta)
-        
-        frame_height, frame_width = raw_image1.shape[:2]
-        crop_size = int(max(frame_height, frame_width)*math.sin(rotationSpeed*timeDelta/180*math.pi))
-        
+
         # Ensure image1 and image2 are in the correct format
         if raw_image1 is None or raw_image2 is None:
             print("Error: Could not retrieve frames from the video.")
@@ -166,35 +163,35 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         for i in range(len(grid1)):
             gray1 = cv2.cvtColor(grid1[i][0], cv2.COLOR_BGR2GRAY)
             gray2 = cv2.cvtColor(grid2[i][0], cv2.COLOR_BGR2GRAY)
-            alligned_image1, alligned_image2, top_left, right_bottom = align_images(gray1, gray2)
+            # Finding the parts size
+            frame_height, frame_width = gray1.shape[:2]
+            crop_size = int(max(frame_height, frame_width)*math.sin(rotationSpeed*timeDelta/180*math.pi))
+            # Align the two grid parts
+            alligned_image1, alligned_image2, top_left, right_bottom = align_images(gray1, gray2, crop_size)
             diff = cv2.absdiff(alligned_image1, alligned_image2)
             frame_queue.put(diff)
 
-        # Align the two frames
-        alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2, crop_size)
-        diff = cv2.absdiff(alligned_image1, alligned_image2)
-        frame_queue.put(diff)
+            (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
 
-        (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
+            bitThresh = int(bitBrightSelector*(maxVal-minVal)+minVal)
+            # bitThresh = int(bitBrightSelector*maxVal)
+            _, thresh = cv2.threshold(diff, bitThresh, 255, cv2.THRESH_BINARY)
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            boxScale = 3
+            for contour in contours:
+                if cv2.contourArea(contour) > sizeThresh:
+                    x, y, w, h = cv2.boundingRect(contour)
+                    x, y = x + top_left[0], y + top_left[1]
+                    wext = int(w*(boxScale-1)/2)
+                    hext = int(h*(boxScale-1)/2)
+                    cv2.rectangle(grid2[i][0], (x-wext, y-hext), (x + w + wext, y + h + hext), (0, 0, 255), 2)
+            # Hihglight the maxLoc position
+            selectionSide = 30
+            cv2.rectangle(grid2[i][0], (maxLoc[0]-selectionSide//2 + top_left[0], maxLoc[1]-selectionSide//2 + top_left[1]), (maxLoc[0] + selectionSide//2 + top_left[0], maxLoc[1] + selectionSide//2 + top_left[1]), (0, 255, 0), 2)
+            
+            frame_queue.put(grid2[i][0])
 
-        bitThresh = int(bitBrightSelector*(maxVal-minVal)+minVal)
-        # bitThresh = int(bitBrightSelector*maxVal)
-        _, thresh = cv2.threshold(diff, bitThresh, 255, cv2.THRESH_BINARY)
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        boxScale = 3
-        for contour in contours:
-            if cv2.contourArea(contour) > sizeThresh:
-                x, y, w, h = cv2.boundingRect(contour)
-                x, y = x + top_left[0], y + top_left[1]
-                wext = int(w*(boxScale-1)/2)
-                hext = int(h*(boxScale-1)/2)
-                cv2.rectangle(raw_image2, (x-wext, y-hext), (x + w + wext, y + h + hext), (0, 0, 255), 2)
-        # Hihglight the maxLoc position
-        selectionSide = 30
-        cv2.rectangle(raw_image2, (maxLoc[0]-selectionSide//2 + top_left[0], maxLoc[1]-selectionSide//2 + top_left[1]), (maxLoc[0] + selectionSide//2 + top_left[0], maxLoc[1] + selectionSide//2 + top_left[1]), (0, 255, 0), 2)
-        
-        frame_queue.put(raw_image2)
         T1 += timeStep
     
     cap.release()
@@ -208,7 +205,7 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.75
-process_video("pidor2.mp4", startTime=0, timeStep=0.5, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("pidor2.mp4", startTime=6, timeStep=0.5, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
