@@ -13,7 +13,7 @@ global kpGraphRigidity
 global deviationThreshold 
 deviationThreshold = 20 
 kpGraphRigidity = 2
-numOfKeypoints = 500
+numOfKeypoints = 150
 rotationSpeed = 20 # The camera rotation speed in degrees per second
 bitThresh = 40  # Initial threshold value
 bitBrightSelector = 0.75 # Initial bright selector value
@@ -100,14 +100,21 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         diff = cv2.absdiff(alligned_image1, alligned_image2)
         frame_queue.put(diff)
         
-        # grid1 = split_grid(alligned_image1)
-        # grid2 = split_grid(alligned_image2)
-        # diff_array = []
-        # for i in range(len(grid1)):
-        #     alligned_image1, alligned_image2, top_left, right_bottom = align_images(grid1[i][0], grid2[i][0])
-        #     diff = cv2.absdiff(alligned_image1, alligned_image2)
-        #     frame_queue.put(diff)
-            # diff_array.append(detect_changes(grid1[i][0], grid2[i][0]))
+        grid1 = split_grid(alligned_image1, grid_size=(3, 3), overlap=40)
+        grid2 = split_grid(alligned_image2, grid_size=(3, 3), overlap=40)
+        # resize_and_display(grid1[2][0], title="Grid[2]=", delay=3)
+        diff_array = []
+        grid_max_location = (0,0)
+        grid_max_value = 0
+        for i in range(len(grid1)):
+            alligned_image1, alligned_image2, top_left, right_bottom, dev_pts = align_images(grid1[i][0], grid2[i][0])
+            # diff = cv2.absdiff(alligned_image1, alligned_image2)
+            # frame_queue.put(diff)
+            item_diff = detect_changes(grid1[i][0], grid2[i][0])
+            if item_diff[1] > grid_max_value:
+                grid_max_value = item_diff[1]
+                grid_max_location = (item_diff[0][0]+item_diff[3][0], item_diff[0][1]+item_diff[3][1])
+            diff_array.append(item_diff)
         
         (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
 
@@ -220,7 +227,7 @@ def split_grid(image, grid_size=(4, 4), overlap=20):
 
 def detect_changes(image1, image2):
     # Returns the changed regions between two images
-    aligned_image1, aligned_image2, left_top, right_bottom = align_images(image1, image2)
+    aligned_image1, aligned_image2, left_top, right_bottom, dev_pts = align_images(image1, image2)
     diff = cv2.absdiff(aligned_image1[0], aligned_image2[0])
     (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
     return (maxLoc, maxVal, image1[1], left_top)
@@ -241,8 +248,8 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.75
-process_video("orlan.mp4", startTime=11, timeStep=0.5, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("pidor2.mp4", startTime=0, timeStep=0.5, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
-# "cars.mp4", startTime=33,
+# "cars.mp4", startTime=39,
 # "pidor2.mp4", startTime=0,
