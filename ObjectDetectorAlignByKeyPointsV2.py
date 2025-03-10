@@ -12,9 +12,13 @@ global numOfKeypoints
 global kpGraphRigidity
 kpGraphRigidity = 2
 numOfKeypoints = 500
-rotationSpeed = 20 # The camera rotation speed in degrees per second
+rotationSpeed = 10 # The camera rotation speed in degrees per second
 bitThresh = 40  # Initial threshold value
 bitBrightSelector = 0.75 # Initial bright selector value
+
+# Calibration data
+global cameraMatrix
+global distCoeffs
 
 def resize_and_display(image, screen_width=1920, screen_height=1080, title="Detected Difference", delay=0.5):
     """
@@ -64,6 +68,8 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
     global bitBrightSelector
     global bitThresh
     global rotationSpeed
+    global cameraMatrix
+    global distCoeffs
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Could not open video file.")
@@ -89,23 +95,24 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         if raw_image1 is None or raw_image2 is None:
             print("Error: Could not retrieve frames from the video.")
             break
+        # Refine camera matrix
+        newCameraMatrix, roi = cv2.getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, (frame_width, frame_height), 1, (frame_width, frame_height))
+        # Undistort image
+        raw_image1_udst = cv2.undistort(raw_image1, cameraMatrix, distCoeffs, None, newCameraMatrix)
+        raw_image2_udst = cv2.undistort(raw_image2, cameraMatrix, distCoeffs, None, newCameraMatrix)
         
-        gray1 = cv2.cvtColor(raw_image1, cv2.COLOR_BGR2GRAY)
-        gray2 = cv2.cvtColor(raw_image2, cv2.COLOR_BGR2GRAY)
+        # Crop and show result
+        x, y, w, h = roi
+        raw_image1_udst = raw_image1_udst[y:y+h, x:x+w]
+        raw_image2_udst = raw_image2_udst[y:y+h, x:x+w]
+    
+        gray1 = cv2.cvtColor(raw_image1_udst, cv2.COLOR_BGR2GRAY)
+        gray2 = cv2.cvtColor(raw_image2_udst, cv2.COLOR_BGR2GRAY)
         
         # Align the two frames
         alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2, crop_size)
         diff = cv2.absdiff(alligned_image1, alligned_image2)
         frame_queue.put(diff)
-        
-        # grid1 = split_grid(alligned_image1)
-        # grid2 = split_grid(alligned_image2)
-        # diff_array = []
-        # for i in range(len(grid1)):
-        #     alligned_image1, alligned_image2, top_left, right_bottom = align_images(grid1[i][0], grid2[i][0])
-        #     diff = cv2.absdiff(alligned_image1, alligned_image2)
-        #     frame_queue.put(diff)
-            # diff_array.append(detect_changes(grid1[i][0], grid2[i][0]))
         
         (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
 
@@ -121,12 +128,12 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
                 x, y = x + top_left[0], y + top_left[1]
                 wext = int(w*(boxScale-1)/2)
                 hext = int(h*(boxScale-1)/2)
-                cv2.rectangle(raw_image2, (x-wext, y-hext), (x + w + wext, y + h + hext), (0, 0, 255), 2)
+                cv2.rectangle(raw_image2_udst, (x-wext, y-hext), (x + w + wext, y + h + hext), (0, 0, 255), 2)
         # Hihglight the maxLoc position
         selectionSide = 30
-        cv2.rectangle(raw_image2, (maxLoc[0]-selectionSide//2 + top_left[0], maxLoc[1]-selectionSide//2 + top_left[1]), (maxLoc[0] + selectionSide//2 + top_left[0], maxLoc[1] + selectionSide//2 + top_left[1]), (0, 255, 0), 2)
+        cv2.rectangle(raw_image2_udst, (maxLoc[0]-selectionSide//2 + top_left[0], maxLoc[1]-selectionSide//2 + top_left[1]), (maxLoc[0] + selectionSide//2 + top_left[0], maxLoc[1] + selectionSide//2 + top_left[1]), (0, 255, 0), 2)
         
-        frame_queue.put(raw_image2)
+        frame_queue.put(raw_image2_udst)
         T1 += timeStep
     
     cap.release()
@@ -216,10 +223,15 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     display_frames(frame_queue, displayTime)
     processing_thread.join()
 
-bitBrightSelector = 0.75
-process_video("pidor2.mp4", startTime=0
-              , timeStep=0.5, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
+bitBrightSelector = 0.5
+# Load calibration data
+calibration = np.load("camera_calibration.npz")
+cameraMatrix = calibration["cameraMatrix"]
+distCoeffs = calibration["distCoeffs"]
+process_video("blackWave.mp4", startTime=0, timeStep=0.5, timeDelta=0.25, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
 # "pidor2.mp4", startTime=0,
+# "blackStable.mp4", startTime=18,
+# "blackWave.mp4", startTime=0,
