@@ -249,10 +249,14 @@ FakesAssemblies/
 
 # MPEG4 files
 
-# Visual Studio LightSwitch build output
+# Media assets
 **/*.MP4
 **/*.mp4
 **/*.MPEG4
+**/*.jpeg
+**/*.jpg
+**/*.zip
+**/*.npz
 
 # GhostDoc plugin setting file
 *.GhostDoc.xml
