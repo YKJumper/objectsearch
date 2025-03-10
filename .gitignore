@@ -253,6 +253,9 @@ FakesAssemblies/
 **/*.MP4
 **/*.mp4
 **/*.MPEG4
+**/*.jpg
+**/*.jpeg
+**/*.zip
 
 # GhostDoc plugin setting file
 *.GhostDoc.xml
