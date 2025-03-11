@@ -248,10 +248,11 @@ bitBrightSelector = 0.75
 calibration = np.load("camera_calibration.npz")
 cameraMatrix = calibration["cameraMatrix"]
 distCoeffs = calibration["distCoeffs"]
-process_video("stableBalcony.mp4", startTime=18, timeStep=0.3, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("Stadium.mp4", startTime=0, timeStep=0.3, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
 # "pidor2.mp4", startTime=0,
 # "stableBalcony.mp4", startTime=18,
 # "wavedBalcony.mp4", startTime=0,
+# "Stadium.mp4", startTime=0,
