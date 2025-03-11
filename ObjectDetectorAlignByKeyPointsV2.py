@@ -98,8 +98,13 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         # Refine camera matrix
         newCameraMatrix, roi = cv2.getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, (frame_width, frame_height), 1, (frame_width, frame_height))
         # Undistort image
-        raw_image1_udst = cv2.undistort(raw_image1, cameraMatrix, distCoeffs, None, newCameraMatrix)
-        raw_image2_udst = cv2.undistort(raw_image2, cameraMatrix, distCoeffs, None, newCameraMatrix)
+        # raw_image1_udst = cv2.undistort(raw_image1, cameraMatrix, distCoeffs, None, newCameraMatrix)
+         #raw_image2_udst = cv2.undistort(raw_image2, cameraMatrix, distCoeffs, None, newCameraMatrix)
+        
+        # Undistort via remap
+        mapx, mapy = cv2.initUndistortRectifyMap(cameraMatrix, distCoeffs, None, newCameraMatrix, (frame_width, frame_height), 5)
+        raw_image1_udst = cv2.remap(raw_image1, mapx, mapy, cv2.INTER_LINEAR)
+        raw_image2_udst = cv2.remap(raw_image2, mapx, mapy, cv2.INTER_LINEAR)
         
         # Crop and show result
         x, y, w, h = roi
@@ -231,7 +236,7 @@ bitBrightSelector = 0.75
 calibration = np.load("camera_calibration.npz")
 cameraMatrix = calibration["cameraMatrix"]
 distCoeffs = calibration["distCoeffs"]
-process_video("wavedBalcony.mp4", startTime=0, timeStep=0.3, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("Stadium.mp4", startTime=0, timeStep=0.3, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,

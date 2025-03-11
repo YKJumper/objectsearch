@@ -1,5 +1,16 @@
 """
 Camera matrix (Intrinsic parameters):
+ [[1.45744886e+03 0.00000000e+00 9.01478613e+02]
+ [0.00000000e+00 1.45594373e+03 4.96952535e+02]
+ [0.00000000e+00 0.00000000e+00 1.00000000e+00]]
+
+Distortion coefficients:
+ [[ 0.11957122 -0.38768829  0.00137636  0.00394898  0.3468746 ]]
+
+Calibration data saved successfully!
+"""
+"""
+Camera matrix (Intrinsic parameters):
  [[1.53218978e+03 0.00000000e+00 9.13238112e+02]
  [0.00000000e+00 1.53231008e+03 4.97674328e+02]
  [0.00000000e+00 0.00000000e+00 1.00000000e+00]]
@@ -67,7 +78,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Chessboard dimensions (inner corners per row and column)
-CHECKERBOARD = (9, 6)
+CHECKERBOARD = (6, 9)
 
 def get_frame_at_time(cap, fps, time_sec, crop_percentage=95):
     frame_number = int(time_sec * fps)
@@ -148,7 +159,7 @@ objp = np.zeros((CHECKERBOARD[0]*CHECKERBOARD[1], 3), np.float32)
 objp[:, :2] = np.mgrid[0:CHECKERBOARD[0], 0:CHECKERBOARD[1]].T.reshape(-1, 2)
 
 # Create calibaration image set
-folderName = "1847" #get_calibration_image_set('VideoCalibrationPlane.mp4', 0, 1.35, 20)
+folderName = get_calibration_image_set('VideoCalibrationPlane.mp4', 0, 1.35, 20)
 # Load images
 images = glob.glob(folderName+'/testImage_*.jpg')
 
@@ -176,9 +187,7 @@ for fname in images:
 
 
 # Calibrate camera using points gathered
-ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv2.calibrateCamera(
-    objpoints, imgpoints, gray.shape[::-1], None, None
-)
+ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
 
 # Print calibration results
 print("\nCamera matrix (Intrinsic parameters):\n", cameraMatrix)
