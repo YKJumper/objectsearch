@@ -12,7 +12,7 @@ global numOfKeypoints
 global kpGraphRigidity
 kpGraphRigidity = 2
 numOfKeypoints = 500
-rotationSpeed = 20 # The camera rotation speed in degrees per second
+rotationSpeed = 25 # The camera rotation speed in degrees per second
 bitThresh = 40  # Initial threshold value
 bitBrightSelector = 0.75 # Initial bright selector value
 
@@ -81,21 +81,27 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
     while T1 + timeStep <= endTime:
         raw_image1 = get_frame_at_time(cap, fps, T1)
         raw_image2 = get_frame_at_time(cap, fps, T1 + timeDelta)
+        raw_image3 = get_frame_at_time(cap, fps, T1 + 2*timeDelta)
         
         frame_height, frame_width = raw_image1.shape[:2]
         crop_size = int(max(frame_height, frame_width)*math.sin(rotationSpeed*timeDelta/180*math.pi))
         
         # Ensure image1 and image2 are in the correct format
-        if raw_image1 is None or raw_image2 is None:
+        if raw_image1 is None or raw_image2 is None or raw_image3 is None:
             print("Error: Could not retrieve frames from the video.")
             break
         
         gray1 = cv2.cvtColor(raw_image1, cv2.COLOR_BGR2GRAY)
         gray2 = cv2.cvtColor(raw_image2, cv2.COLOR_BGR2GRAY)
+        gray3 = cv2.cvtColor(raw_image3, cv2.COLOR_BGR2GRAY)
         
         # Align the two frames
         alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2, crop_size)
-        diff = cv2.absdiff(alligned_image1, alligned_image2)
+        diff0 = cv2.absdiff(alligned_image1, alligned_image2)
+        alligned_image1, alligned_image3, top_left, right_bottom = align_images( gray1, gray3, crop_size)
+        diff1 = cv2.absdiff(alligned_image1, alligned_image3)
+        alligned_diff0, alligned_diff1, top_left_diff, right_bottom_diff = align_images( diff0, diff1, crop_size)
+        diff = cv2.absdiff(alligned_diff0, alligned_diff1)
         frame_queue.put(diff)
         
         # grid1 = split_grid(alligned_image1)
@@ -118,13 +124,13 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         for contour in contours:
             if cv2.contourArea(contour) > sizeThresh:
                 x, y, w, h = cv2.boundingRect(contour)
-                x, y = x + top_left[0], y + top_left[1]
+                x, y = x + top_left[0]+top_left_diff[0], y + top_left[1]+top_left_diff[1]
                 wext = int(w*(boxScale-1)/2)
                 hext = int(h*(boxScale-1)/2)
                 cv2.rectangle(raw_image2, (x-wext, y-hext), (x + w + wext, y + h + hext), (0, 0, 255), 2)
         # Hihglight the maxLoc position
         selectionSide = 30
-        cv2.rectangle(raw_image2, (maxLoc[0]-selectionSide//2 + top_left[0], maxLoc[1]-selectionSide//2 + top_left[1]), (maxLoc[0] + selectionSide//2 + top_left[0], maxLoc[1] + selectionSide//2 + top_left[1]), (0, 255, 0), 2)
+        cv2.rectangle(raw_image2, (maxLoc[0]-selectionSide//2 + top_left[0]+top_left_diff[0], maxLoc[1]-selectionSide//2 + top_left[1]+top_left_diff[1]), (maxLoc[0] + selectionSide//2 + top_left[0]+top_left_diff[0], maxLoc[1] + selectionSide//2 + top_left[1]+top_left_diff[1]), (0, 255, 0), 2)
         
         frame_queue.put(raw_image2)
         T1 += timeStep
@@ -216,11 +222,11 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     display_frames(frame_queue, displayTime)
     processing_thread.join()
 
-bitBrightSelector = 0.75
-process_video("blackWave.mp4", startTime=0, timeStep=0.5, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
+bitBrightSelector = 0.70
+process_video("pidor2.mp4", startTime=0, timeStep=0.5, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
 # "pidor2.mp4", startTime=0,
-# "blackStable.mp4", startTime=18,
+# "stableBalcony.mp4", startTime=0,
 # "blackWave.mp4", startTime=0,
