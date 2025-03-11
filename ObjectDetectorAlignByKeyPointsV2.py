@@ -10,9 +10,9 @@ global bitThresh
 global rotationSpeed 
 global numOfKeypoints
 global kpGraphRigidity
-kpGraphRigidity = 2
+kpGraphRigidity = 10
 numOfKeypoints = 500
-rotationSpeed = 25 # The camera rotation speed in degrees per second
+rotationSpeed = 15 # The camera rotation speed in degrees per second
 bitThresh = 40  # Initial threshold value
 bitBrightSelector = 0.75 # Initial bright selector value
 
@@ -60,7 +60,7 @@ def get_frame_at_time(cap, fps, time_sec, crop_percentage=70):
     
     return frame[y1:y2, x1:x2]
 
-def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTime=None, sizeThresh=1):
+def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTime=None, sizeMinThresh=1, sizeMaxThresh=10):
     global bitBrightSelector
     global bitThresh
     global rotationSpeed
@@ -80,8 +80,8 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
     T1 = startTime
     while T1 + timeStep <= endTime:
         raw_image1 = get_frame_at_time(cap, fps, T1)
-        raw_image2 = get_frame_at_time(cap, fps, T1 + timeDelta)
-        raw_image3 = get_frame_at_time(cap, fps, T1 + 2*timeDelta)
+        raw_image2 = get_frame_at_time(cap, fps, T1 + 0.75*timeDelta)
+        raw_image3 = get_frame_at_time(cap, fps, T1 + 1.5*timeDelta)
         
         frame_height, frame_width = raw_image1.shape[:2]
         crop_size = int(max(frame_height, frame_width)*math.sin(rotationSpeed*timeDelta/180*math.pi))
@@ -122,7 +122,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         
         boxScale = 3
         for contour in contours:
-            if cv2.contourArea(contour) > sizeThresh:
+            if cv2.contourArea(contour) > sizeMinThresh and cv2.contourArea(contour) < sizeMaxThresh:
                 x, y, w, h = cv2.boundingRect(contour)
                 x, y = x + top_left[0]+top_left_diff[0], y + top_left[1]+top_left_diff[1]
                 wext = int(w*(boxScale-1)/2)
@@ -215,15 +215,15 @@ def display_frames(frame_queue, DisplayTime=0.5):
             break
         resize_and_display(frame, title="Detected Difference. bitThresh="+str(bitThresh), delay=DisplayTime)
 
-def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displayTime=0.5, sizeThresh=1):
+def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displayTime=0.5, sizeMinThresh=1):
     frame_queue = Queue(maxsize=10)
-    processing_thread = threading.Thread(target=process_frames, args=(videoFile, startTime, timeStep, timeDelta, frame_queue, endTime, sizeThresh))
+    processing_thread = threading.Thread(target=process_frames, args=(videoFile, startTime, timeStep, timeDelta, frame_queue, endTime, sizeMinThresh))
     processing_thread.start()
     display_frames(frame_queue, displayTime)
     processing_thread.join()
 
-bitBrightSelector = 0.70
-process_video("pidor2.mp4", startTime=0, timeStep=0.5, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
+bitBrightSelector = 0.50
+process_video("cars.mp4", startTime=33, timeStep=0.33, timeDelta=0.12, endTime=999, displayTime=5.0, sizeMinThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
