@@ -86,40 +86,52 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
     T1 = startTime
     while T1 + timeStep <= endTime:
         raw_image1 = get_frame_at_time(cap, fps, T1)
-        raw_image2 = get_frame_at_time(cap, fps, T1 + timeDelta)
+        raw_image2 = get_frame_at_time(cap, fps, T1 + 0.75*timeDelta)
+        raw_image3 = get_frame_at_time(cap, fps, T1 + 1.5*timeDelta)
         
         frame_height, frame_width = raw_image1.shape[:2]
         crop_size = int(max(frame_height, frame_width)*math.sin(rotationSpeed*timeDelta/180*math.pi))
         
         # Ensure image1 and image2 are in the correct format
-        if raw_image1 is None or raw_image2 is None:
+        if raw_image1 is None or raw_image2 is None or raw_image3 is None:
             print("Error: Could not retrieve frames from the video.")
             break
         # Refine camera matrix
         newCameraMatrix, roi = cv2.getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, (frame_width, frame_height), 1, (frame_width, frame_height))
         # Undistort image
-        # raw_image1_udst = cv2.undistort(raw_image1, cameraMatrix, distCoeffs, None, newCameraMatrix)
-         #raw_image2_udst = cv2.undistort(raw_image2, cameraMatrix, distCoeffs, None, newCameraMatrix)
+        raw_image1_udst = cv2.undistort(raw_image1, cameraMatrix, distCoeffs, None, newCameraMatrix)
+        raw_image2_udst = cv2.undistort(raw_image2, cameraMatrix, distCoeffs, None, newCameraMatrix)
+        raw_image3_udst = cv2.undistort(raw_image3, cameraMatrix, distCoeffs, None, newCameraMatrix)
         
         # Undistort via remap
-        mapx, mapy = cv2.initUndistortRectifyMap(cameraMatrix, distCoeffs, None, newCameraMatrix, (frame_width, frame_height), 5)
-        raw_image1_udst = cv2.remap(raw_image1, mapx, mapy, cv2.INTER_LINEAR)
-        raw_image2_udst = cv2.remap(raw_image2, mapx, mapy, cv2.INTER_LINEAR)
+        # mapx, mapy = cv2.initUndistortRectifyMap(cameraMatrix, distCoeffs, None, newCameraMatrix, (frame_width, frame_height), 5)
+        # raw_image1_udst = cv2.remap(raw_image1, mapx, mapy, cv2.INTER_LINEAR)
+        # raw_image2_udst = cv2.remap(raw_image2, mapx, mapy, cv2.INTER_LINEAR)
         
         # Crop and show result
         x, y, w, h = roi
         raw_image1_udst = raw_image1_udst[y:y+h, x:x+w]
         raw_image2_udst = raw_image2_udst[y:y+h, x:x+w]
+        raw_image3_udst = raw_image3_udst[y:y+h, x:x+w]
     
-        diff = cv2.absdiff(raw_image1_udst, raw_image2_udst)
-        frame_queue.put(diff)
+        # Show unalligned undistoted frames for reference only
+        # diff0 = cv2.absdiff(raw_image1_udst, raw_image2_udst)
+        # diff1 = cv2.absdiff(raw_image1_udst, raw_image3_udst)
+        # diff = cv2.absdiff(diff0, diff1)
+        # frame_queue.put(diff)
         
         gray1 = cv2.cvtColor(raw_image1_udst, cv2.COLOR_BGR2GRAY)
         gray2 = cv2.cvtColor(raw_image2_udst, cv2.COLOR_BGR2GRAY)
+        gray3 = cv2.cvtColor(raw_image3_udst, cv2.COLOR_BGR2GRAY)
+        
         
         # Align the two frames
-        alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2, crop_size)
-        diff = cv2.absdiff(alligned_image1, alligned_image2)
+        alligned_image1, alligned_image2, top_left0, right_bottom0 = align_images( gray1, gray2, crop_size)
+        alligned_image1, alligned_image3, top_left0, right_bottom0 = align_images( gray1, gray3, crop_size)
+        diff0 = cv2.absdiff(alligned_image1, alligned_image2)
+        diff1 = cv2.absdiff(alligned_image1, alligned_image3)
+        alligned_diff0, alligned_diff1, top_left1, right_bottom1 = align_images( diff0, diff1, crop_size)
+        diff = cv2.absdiff(alligned_diff0, alligned_diff1)
         frame_queue.put(diff)
         
         (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
@@ -133,13 +145,13 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         for contour in contours:
             if cv2.contourArea(contour) > sizeThresh:
                 x, y, w, h = cv2.boundingRect(contour)
-                x, y = x + top_left[0], y + top_left[1]
+                x, y = x + top_left0[0] + top_left1[0], y + top_left0[1] + top_left1[1]
                 wext = int(w*(boxScale-1)/2)
                 hext = int(h*(boxScale-1)/2)
                 cv2.rectangle(raw_image2_udst, (x-wext, y-hext), (x + w + wext, y + h + hext), (0, 0, 255), 2)
         # Hihglight the maxLoc position
         selectionSide = 30
-        cv2.rectangle(raw_image2_udst, (maxLoc[0]-selectionSide//2 + top_left[0], maxLoc[1]-selectionSide//2 + top_left[1]), (maxLoc[0] + selectionSide//2 + top_left[0], maxLoc[1] + selectionSide//2 + top_left[1]), (0, 255, 0), 2)
+        cv2.rectangle(raw_image2_udst, (maxLoc[0]-selectionSide//2 + top_left0[0] + top_left1[0], maxLoc[1]-selectionSide//2 + top_left0[1] + top_left1[1]), (maxLoc[0] + selectionSide//2 + top_left0[0] + top_left1[0], maxLoc[1] + selectionSide//2 + top_left0[1] + top_left1[1]), (0, 255, 0), 2)
         
         frame_queue.put(raw_image2_udst)
         T1 += timeStep
@@ -236,10 +248,10 @@ bitBrightSelector = 0.75
 calibration = np.load("camera_calibration.npz")
 cameraMatrix = calibration["cameraMatrix"]
 distCoeffs = calibration["distCoeffs"]
-process_video("Stadium.mp4", startTime=0, timeStep=0.3, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("stableBalcony.mp4", startTime=18, timeStep=0.3, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
 # "pidor2.mp4", startTime=0,
-# "blackStable.mp4", startTime=18,
-# "blackWave.mp4", startTime=0,
+# "stableBalcony.mp4", startTime=18,
+# "wavedBalcony.mp4", startTime=0,
