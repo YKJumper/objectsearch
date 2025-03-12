@@ -46,7 +46,7 @@ def resize_and_display(image, screen_width=1920, screen_height=1080, title="Dete
     cv2.waitKey(int(delay * 1000))
     cv2.destroyAllWindows()
 
-def get_frame_at_time(cap, fps, time_sec, crop_percentage=95):
+def get_frame_at_time(cap, fps, time_sec, crop_percentage=100):
     frame_number = int(time_sec * fps)
     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
     ret, frame = cap.read()
@@ -248,7 +248,7 @@ bitBrightSelector = 0.75
 calibration = np.load("camera_calibration.npz")
 cameraMatrix = calibration["cameraMatrix"]
 distCoeffs = calibration["distCoeffs"]
-process_video("stableBalcony.mp4", startTime=18, timeStep=0.3, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("wavedBalcony.mp4", startTime=0, timeStep=0.3, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
