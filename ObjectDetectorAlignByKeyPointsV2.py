@@ -98,8 +98,8 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         # Align the two frames
         alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2, crop_size)
         diff0 = cv2.absdiff(alligned_image1, alligned_image2)
-        alligned_image1, alligned_image3, top_left, right_bottom = align_images( gray1, gray3, crop_size)
-        diff1 = cv2.absdiff(alligned_image1, alligned_image3)
+        alligned_image2, alligned_image3, top_left, right_bottom = align_images( gray2, gray3, crop_size)
+        diff1 = cv2.absdiff(alligned_image2, alligned_image3)
         alligned_diff0, alligned_diff1, top_left_diff, right_bottom_diff = align_images( diff0, diff1, crop_size)
         diff = cv2.absdiff(alligned_diff0, alligned_diff1)
         frame_queue.put(diff)
@@ -119,7 +119,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         # bitThresh = int(bitBrightSelector*maxVal)
         _, thresh = cv2.threshold(diff, bitThresh, 255, cv2.THRESH_BINARY)
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
+
         boxScale = 3
         for contour in contours:
             if cv2.contourArea(contour) > sizeMinThresh and cv2.contourArea(contour) < sizeMaxThresh:
@@ -127,10 +127,12 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
                 x, y = x + top_left[0]+top_left_diff[0], y + top_left[1]+top_left_diff[1]
                 wext = int(w*(boxScale-1)/2)
                 hext = int(h*(boxScale-1)/2)
-                cv2.rectangle(raw_image2, (x-wext, y-hext), (x + w + wext, y + h + hext), (0, 0, 255), 2)
+                cv2.rectangle(raw_image2, (x-wext, y-hext), (x + w + wext, y + h + hext), (0, 0, 255), 2) 
+                
         # Hihglight the maxLoc position
         selectionSide = 30
-        cv2.rectangle(raw_image2, (maxLoc[0]-selectionSide//2 + top_left[0]+top_left_diff[0], maxLoc[1]-selectionSide//2 + top_left[1]+top_left_diff[1]), (maxLoc[0] + selectionSide//2 + top_left[0]+top_left_diff[0], maxLoc[1] + selectionSide//2 + top_left[1]+top_left_diff[1]), (0, 255, 0), 2)
+        if maxVal > bitThresh:
+            cv2.rectangle(raw_image2, (maxLoc[0]-selectionSide//2 + top_left[0]+top_left_diff[0], maxLoc[1]-selectionSide//2 + top_left[1]+top_left_diff[1]), (maxLoc[0] + selectionSide//2 + top_left[0]+top_left_diff[0], maxLoc[1] + selectionSide//2 + top_left[1]+top_left_diff[1]), (0, 255, 0), 2)
         
         frame_queue.put(raw_image2)
         T1 += timeStep
@@ -223,10 +225,10 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.50
-process_video("cars.mp4", startTime=33, timeStep=0.33, timeDelta=0.12, endTime=999, displayTime=5.0, sizeMinThresh=1)
+process_video("stableBalcony.mp4", startTime=0, timeStep=0.33, timeDelta=0.12, endTime=999, displayTime=5.0, sizeMinThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
 # "pidor2.mp4", startTime=0,
 # "stableBalcony.mp4", startTime=0,
-# "blackWave.mp4", startTime=0,
+# "stableBalcony.mp4", startTime=0,
