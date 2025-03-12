@@ -127,8 +127,8 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         
         # Align the two frames
         alligned_image1, alligned_image2, top_left0, right_bottom0 = align_images( gray1, gray2, crop_size)
-        alligned_image1, alligned_image3, top_left0, right_bottom0 = align_images( gray1, gray3, crop_size)
         diff0 = cv2.absdiff(alligned_image1, alligned_image2)
+        alligned_image1, alligned_image3, top_left0, right_bottom0 = align_images( gray1, gray3, crop_size)
         diff1 = cv2.absdiff(alligned_image1, alligned_image3)
         alligned_diff0, alligned_diff1, top_left1, right_bottom1 = align_images( diff0, diff1, crop_size)
         diff = cv2.absdiff(alligned_diff0, alligned_diff1)
@@ -248,7 +248,7 @@ bitBrightSelector = 0.75
 calibration = np.load("camera_calibration.npz")
 cameraMatrix = calibration["cameraMatrix"]
 distCoeffs = calibration["distCoeffs"]
-process_video("Stadium.mp4", startTime=0, timeStep=0.3, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("stableBalcony.mp4", startTime=18, timeStep=0.3, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
