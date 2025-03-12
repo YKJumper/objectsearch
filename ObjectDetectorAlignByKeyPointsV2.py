@@ -10,7 +10,7 @@ global bitThresh
 global rotationSpeed 
 global numOfKeypoints
 global kpGraphRigidity
-kpGraphRigidity = 10
+kpGraphRigidity = 5
 numOfKeypoints = 500
 rotationSpeed = 15 # The camera rotation speed in degrees per second
 bitThresh = 40  # Initial threshold value
@@ -98,8 +98,8 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         # Align the two frames
         alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2, crop_size)
         diff0 = cv2.absdiff(alligned_image1, alligned_image2)
-        alligned_image2, alligned_image3, top_left, right_bottom = align_images( gray2, gray3, crop_size)
-        diff1 = cv2.absdiff(alligned_image2, alligned_image3)
+        alligned_image1, alligned_image3, top_left, right_bottom = align_images( gray1, gray3, crop_size)
+        diff1 = cv2.absdiff(alligned_image1, alligned_image3)
         alligned_diff0, alligned_diff1, top_left_diff, right_bottom_diff = align_images( diff0, diff1, crop_size)
         diff = cv2.absdiff(alligned_diff0, alligned_diff1)
         frame_queue.put(diff)
@@ -225,10 +225,10 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.50
-process_video("stableBalcony.mp4", startTime=0, timeStep=0.33, timeDelta=0.12, endTime=999, displayTime=5.0, sizeMinThresh=1)
+process_video("pidor2.mp4", startTime=0, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=5.0, sizeMinThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
 # "pidor2.mp4", startTime=0,
-# "stableBalcony.mp4", startTime=0,
+# "stableBalcony.mp4", startTime=18,
 # "stableBalcony.mp4", startTime=0,
