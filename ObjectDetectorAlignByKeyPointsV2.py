@@ -42,7 +42,7 @@ def resize_and_display(image, screen_width=1920, screen_height=1080, title="Dete
     cv2.waitKey(int(delay * 1000))
     cv2.destroyAllWindows()
 
-def get_frame_at_time(cap, fps, time_sec, crop_percentage=70):
+def get_frame_at_time(cap, fps, time_sec, crop_percentage=100):
     frame_number = int(time_sec * fps)
     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
     ret, frame = cap.read()
@@ -217,10 +217,11 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.75
-process_video("blackWave.mp4", startTime=0, timeStep=0.5, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("wavedBalcony.mp4", startTime=0, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
 # "pidor2.mp4", startTime=0,
-# "blackStable.mp4", startTime=18,
-# "blackWave.mp4", startTime=0,
+# "stableBalcony.mp4", startTime=18,
+# "wavedBalcony.mp4", startTime=0,
+# "Stadium.mp4", startTime=0,
