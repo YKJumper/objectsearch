@@ -4,6 +4,15 @@ import numpy as np
 import time
 import threading
 from queue import Queue 
+# https://scikit-image.org/docs/stable/user_guide/install.html
+from skimage.metrics import structural_similarity as ssim
+
+def compare_frames(frame1, frame2):
+    gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+    score, _ = ssim(gray1, gray2, full=True)
+    return score  # A score close to 1 means high similarity
+
 
 global bitBrightSelector
 global bitThresh
@@ -80,8 +89,12 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
     T1 = startTime
     while T1 + timeStep <= endTime:
         raw_image1 = get_frame_at_time(cap, fps, T1)
-        raw_image2 = get_frame_at_time(cap, fps, T1 + timeDelta)
         
+        for i in range(100):
+            raw_image2 = get_frame_at_time(cap, fps, T1 + timeDelta+i*0.01)
+            ssim_score = compare_frames(raw_image1, raw_image2)
+            print(f"The frames similarity score: {ssim_score}, tileDelta={timeDelta+i*0.01}")
+
         frame_height, frame_width = raw_image1.shape[:2]
         crop_size = int(max(frame_height, frame_width)*math.sin(rotationSpeed*timeDelta/180*math.pi))
         
@@ -217,7 +230,7 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.75
-process_video("wavedBalcony.mp4", startTime=0, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("stableBalcony.mp4", startTime=18, timeStep=0.33, timeDelta=0.01, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
