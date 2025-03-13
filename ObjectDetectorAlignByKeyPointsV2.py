@@ -125,6 +125,8 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         # Align the two frames
         alligned_image1, alligned_image2, top_left, right_bottom, src_filtered, dst_filtered = align_images( gray1, gray2, crop_size)
         diff = cv2.absdiff(alligned_image1, alligned_image2)
+        frame_queue.put(src_filtered)
+        frame_queue.put(dst_filtered)
         frame_queue.put(diff)
 
         (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
@@ -156,9 +158,15 @@ def align_images(image1, image2, crop_size=20):
     global numOfKeypoints
     global kpGraphRigidity
     orb = cv2.ORB_create(numOfKeypoints)
+    sift = cv2.SIFT_create()
     keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
     keypoints2, descriptors2 = orb.detectAndCompute(image2, None)
-    
+
+    # Draw keypoints
+    kp1_output = cv2.drawKeypoints(image1, keypoints1, None, color=(0, 255, 0))
+    kp2_output = cv2.drawKeypoints(image2, keypoints2, None, color=(0, 255, 0))
+
+
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     matches = bf.match(descriptors1, descriptors2)
     matches = sorted(matches, key=lambda x: x.distance)[:50]
@@ -207,7 +215,7 @@ def align_images(image1, image2, crop_size=20):
     align_image1 = image1[y:y + h, x:x + w]
     align_image2 = align_image2[y:y + h, x:x + w]
     
-    return align_image1, align_image2, left_top, right_bottom, src_filtered, dst_filtered
+    return align_image1, align_image2, left_top, right_bottom, kp1_output, kp2_output #src_filtered, dst_filtered
 
 def split_grid(image, grid_size=(4, 4), overlap=20):
     h, w = image.shape[:2]
@@ -243,7 +251,7 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.75
-process_video("wavedBalcony.mp4", startTime=0, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("cars.mp4", startTime=33, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
