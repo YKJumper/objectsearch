@@ -41,6 +41,35 @@ def resize_and_display(image, screen_width=1920, screen_height=1080, title="Dete
     cv2.moveWindow(title, 0, 0)
     cv2.waitKey(int(delay * 1000))
     cv2.destroyAllWindows()
+    
+def filter_unmatched_keypoints(src_pts, dst_pts, M, inverse_M):
+    """
+    Filters keypoints to remove those that have a counterpart in the other array after transformation.
+    
+    :param src_pts: Source keypoints
+    :param dst_pts: Destination keypoints
+    :param M: Forward transformation matrix
+    :param inverse_M: Inverse transformation matrix
+    :return: Filtered source and destination keypoints
+    """
+    if M is None or inverse_M is None:
+        return src_pts, dst_pts  # If transformation fails, return original points
+    
+    src_transformed = cv2.transform(src_pts, M)
+    dst_transformed = cv2.transform(dst_pts, inverse_M)
+    
+    def filter_out_matches(original_pts, transformed_pts):
+        filtered_pts = []
+        for i, pt in enumerate(original_pts):
+            dists = np.linalg.norm(transformed_pts - pt, axis=2)
+            if np.all(dists > 5):  # Threshold to determine unmatched points
+                filtered_pts.append(pt)
+        return np.array(filtered_pts, dtype=np.float32).reshape(-1, 1, 2)
+    
+    src_filtered = filter_out_matches(src_pts, dst_transformed)
+    dst_filtered = filter_out_matches(dst_pts, src_transformed)
+    
+    return src_filtered, dst_filtered
 
 def get_frame_at_time(cap, fps, time_sec, crop_percentage=100):
     frame_number = int(time_sec * fps)
@@ -94,19 +123,10 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         gray2 = cv2.cvtColor(raw_image2, cv2.COLOR_BGR2GRAY)
         
         # Align the two frames
-        alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2, crop_size)
+        alligned_image1, alligned_image2, top_left, right_bottom, src_filtered, dst_filtered = align_images( gray1, gray2, crop_size)
         diff = cv2.absdiff(alligned_image1, alligned_image2)
         frame_queue.put(diff)
-        
-        # grid1 = split_grid(alligned_image1)
-        # grid2 = split_grid(alligned_image2)
-        # diff_array = []
-        # for i in range(len(grid1)):
-        #     alligned_image1, alligned_image2, top_left, right_bottom = align_images(grid1[i][0], grid2[i][0])
-        #     diff = cv2.absdiff(alligned_image1, alligned_image2)
-        #     frame_queue.put(diff)
-            # diff_array.append(detect_changes(grid1[i][0], grid2[i][0]))
-        
+
         (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
 
         bitThresh = int(bitBrightSelector*(maxVal-minVal)+minVal)
@@ -167,7 +187,13 @@ def align_images(image1, image2, crop_size=20):
     src_pts = np.float32([keypoints2[m.trainIdx].pt for m in rigid_matches]).reshape(-1, 1, 2)
     dst_pts = np.float32([keypoints1[m.queryIdx].pt for m in rigid_matches]).reshape(-1, 1, 2)
     
+    # Finfing direct and inverse transformation matrises
     M, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
+    inverse_M, _ = cv2.estimateAffinePartial2D(dst_pts, src_pts)
+
+    # Filter the keypoints are not chenging by the affinity tranformation low
+    src_filtered, dst_filtered = filter_unmatched_keypoints(src_pts, dst_pts, M, inverse_M)
+    
     align_image2 = cv2.warpAffine(image2, M, (image1.shape[1], image1.shape[0]))
 
     # Set the bounding box of the largest dark region
@@ -181,7 +207,7 @@ def align_images(image1, image2, crop_size=20):
     align_image1 = image1[y:y + h, x:x + w]
     align_image2 = align_image2[y:y + h, x:x + w]
     
-    return align_image1, align_image2, left_top, right_bottom
+    return align_image1, align_image2, left_top, right_bottom, src_filtered, dst_filtered
 
 def split_grid(image, grid_size=(4, 4), overlap=20):
     h, w = image.shape[:2]
