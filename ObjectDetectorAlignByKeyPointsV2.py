@@ -42,7 +42,7 @@ def resize_and_display(image, screen_width=1920, screen_height=1080, title="Dete
     cv2.waitKey(int(delay * 1000))
     cv2.destroyAllWindows()
 
-def get_frame_at_time(cap, fps, time_sec, crop_percentage=100):
+def get_frame_at_time(cap, fps, time_sec, crop_percentage=70):
     frame_number = int(time_sec * fps)
     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
     ret, frame = cap.read()
@@ -94,18 +94,11 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         gray2 = cv2.cvtColor(raw_image2, cv2.COLOR_BGR2GRAY)
         
         # Align the two frames
-        alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2, crop_size)
+        alligned_image1, alligned_image2, top_left, right_bottom, kp1_output, kp2_output = align_images( gray1, gray2, crop_size)
+        diff_keypoints = cv2.absdiff(kp1_output, kp2_output)
         diff = cv2.absdiff(alligned_image1, alligned_image2)
+        frame_queue.put(diff_keypoints)
         frame_queue.put(diff)
-        
-        # grid1 = split_grid(alligned_image1)
-        # grid2 = split_grid(alligned_image2)
-        # diff_array = []
-        # for i in range(len(grid1)):
-        #     alligned_image1, alligned_image2, top_left, right_bottom = align_images(grid1[i][0], grid2[i][0])
-        #     diff = cv2.absdiff(alligned_image1, alligned_image2)
-        #     frame_queue.put(diff)
-            # diff_array.append(detect_changes(grid1[i][0], grid2[i][0]))
         
         (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
 
@@ -142,10 +135,10 @@ def align_images(image1, image2, crop_size=20):
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     matches = bf.match(descriptors1, descriptors2)
     matches = sorted(matches, key=lambda x: x.distance)[:50]
-    
+
     if len(matches) < 10:
         return image2, image2, (0, 0), (image1.shape[1], image1.shape[0])
-    
+
     src_pts = np.float32([keypoints2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
     dst_pts = np.float32([keypoints1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
     
@@ -167,6 +160,13 @@ def align_images(image1, image2, crop_size=20):
     src_pts = np.float32([keypoints2[m.trainIdx].pt for m in rigid_matches]).reshape(-1, 1, 2)
     dst_pts = np.float32([keypoints1[m.queryIdx].pt for m in rigid_matches]).reshape(-1, 1, 2)
     
+    src_points = [keypoints2[m.trainIdx].pt for m in rigid_matches]
+    dst_points = [keypoints1[m.queryIdx].pt for m in rigid_matches]
+
+    # Draw keypoints
+    src_output = cv2.drawKeypoints(image2, keypoints2, None, color=(0, 255, 0))
+    dst_output = cv2.drawKeypoints(image1, keypoints1, None, color=(255, 0, 0)) 
+
     M, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
     align_image2 = cv2.warpAffine(image2, M, (image1.shape[1], image1.shape[0]))
 
@@ -181,25 +181,7 @@ def align_images(image1, image2, crop_size=20):
     align_image1 = image1[y:y + h, x:x + w]
     align_image2 = align_image2[y:y + h, x:x + w]
     
-    return align_image1, align_image2, left_top, right_bottom
-
-def split_grid(image, grid_size=(4, 4), overlap=20):
-    h, w = image.shape[:2]
-    step_x, step_y = w // grid_size[1], h // grid_size[0]
-    patches = []
-    for i in range(grid_size[0]):
-        for j in range(grid_size[1]):
-            x1, y1 = max(j * step_x - overlap, 0), max(i * step_y - overlap, 0)
-            x2, y2 = min((j + 1) * step_x + overlap, w), min((i + 1) * step_y + overlap, h)
-            patches.append((image[y1:y2, x1:x2], (x1, y1)))
-    return patches
-
-def detect_changes(image1, image2):
-    # Returns the changed regions between two images
-    aligned_image1, aligned_image2, left_top, right_bottom = align_images(image1, image2)
-    diff = cv2.absdiff(aligned_image1[0], aligned_image2[0])
-    (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
-    return (maxLoc, maxVal, image1[1], left_top)
+    return align_image1, align_image2, left_top, right_bottom, src_output, dst_output
 
 def display_frames(frame_queue, DisplayTime=0.5):
     global bitBrightSelector
@@ -217,7 +199,7 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.75
-process_video("wavedBalcony.mp4", startTime=0, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("pidor2.mp4", startTime=0, timeStep=0.33, timeDelta=0.5, endTime=999, displayTime=15.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
