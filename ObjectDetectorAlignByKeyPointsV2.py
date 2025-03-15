@@ -59,6 +59,26 @@ def get_frame_at_time(cap, fps, time_sec, crop_percentage=70):
     
     return frame[y1:y2, x1:x2]
 
+def detect_keypoints_grid(image, num_keypoints=500, grid_size=(4, 4)):
+    orb = cv2.ORB_create(num_keypoints)
+    h, w = image.shape[:2]
+    keypoints = []
+
+    gh, gw = h // grid_size[0], w // grid_size[1]  # Grid cell dimensions
+
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
+            x_start, y_start = j * gw, i * gh
+            roi = image[y_start:y_start + gh, x_start:x_start + gw]
+
+            local_kp = orb.detect(roi, None)
+            for kp in local_kp[:num_keypoints // (grid_size[0] * grid_size[1])]:  
+                kp.pt = (kp.pt[0] + x_start, kp.pt[1] + y_start)  # Adjust coordinates
+                keypoints.append(kp)
+
+    keypoints, descriptors = orb.compute(image, keypoints)
+    return keypoints, descriptors
+
 def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTime=None, sizeMinThresh=1, sizeMaxThresh=10):
     global bitBrightSelector
     global bitThresh
@@ -134,8 +154,10 @@ def align_images(image1, image2, crop_size=20):
     global numOfKeypoints
     global kpGraphRigidity
     orb = cv2.ORB_create(numOfKeypoints)
-    keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
-    keypoints2, descriptors2 = orb.detectAndCompute(image2, None)
+    keypoints1, descriptors1 = detect_keypoints_grid(image1)
+    keypoints2, descriptors2 = detect_keypoints_grid(image2)
+    # keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
+    # keypoints2, descriptors2 = orb.detectAndCompute(image2, None)
     
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     matches = bf.match(descriptors1, descriptors2)
@@ -197,7 +219,7 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.50
-process_video("pidor2.mp4", startTime=0, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=5.0, sizeMinThresh=1)
+process_video("cars.mp4", startTime=33, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=5.0, sizeMinThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
