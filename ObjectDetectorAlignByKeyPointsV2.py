@@ -60,6 +60,26 @@ def get_frame_at_time(cap, fps, time_sec, crop_percentage=70):
     
     return frame[y1:y2, x1:x2]
 
+def detect_keypoints_grid(image, num_keypoints=500, grid_size=(4, 4)):
+    orb = cv2.ORB_create(num_keypoints)
+    h, w = image.shape[:2]
+    keypoints = []
+
+    gh, gw = h // grid_size[0], w // grid_size[1]  # Grid cell dimensions
+
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
+            x_start, y_start = j * gw, i * gh
+            roi = image[y_start:y_start + gh, x_start:x_start + gw]
+
+            local_kp = orb.detect(roi, None)
+            for kp in local_kp[:num_keypoints // (grid_size[0] * grid_size[1])]:  
+                kp.pt = (kp.pt[0] + x_start, kp.pt[1] + y_start)  # Adjust coordinates
+                keypoints.append(kp)
+
+    keypoints, descriptors = orb.compute(image, keypoints)
+    return keypoints, descriptors
+
 def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTime=None, sizeThresh=1):
     global bitBrightSelector
     global bitThresh
@@ -98,7 +118,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         diff_keypoints = cv2.absdiff(kp1_output, kp2_output)
         diff = cv2.absdiff(alligned_image1, alligned_image2)
         frame_queue.put(diff_keypoints)
-        frame_queue.put(diff)
+        # frame_queue.put(diff)
         
         (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
 
@@ -119,7 +139,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         selectionSide = 30
         cv2.rectangle(raw_image2, (maxLoc[0]-selectionSide//2 + top_left[0], maxLoc[1]-selectionSide//2 + top_left[1]), (maxLoc[0] + selectionSide//2 + top_left[0], maxLoc[1] + selectionSide//2 + top_left[1]), (0, 255, 0), 2)
         
-        frame_queue.put(raw_image2)
+        # frame_queue.put(raw_image2)
         T1 += timeStep
     
     cap.release()
@@ -129,8 +149,10 @@ def align_images(image1, image2, crop_size=20):
     global numOfKeypoints
     global kpGraphRigidity
     orb = cv2.ORB_create(numOfKeypoints)
-    keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
-    keypoints2, descriptors2 = orb.detectAndCompute(image2, None)
+    keypoints1, descriptors1 = detect_keypoints_grid(image1)
+    keypoints2, descriptors2 = detect_keypoints_grid(image2)
+    # keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
+    # keypoints2, descriptors2 = orb.detectAndCompute(image2, None)
     
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     matches = bf.match(descriptors1, descriptors2)
