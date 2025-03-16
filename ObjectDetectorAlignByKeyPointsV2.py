@@ -10,7 +10,7 @@ global bitThresh
 global rotationSpeed 
 global numOfKeypoints
 global kpGraphRigidity
-kpGraphRigidity = 5
+kpGraphRigidity = 3
 numOfKeypoints = 500
 rotationSpeed = 15 # The camera rotation speed in degrees per second
 bitThresh = 40  # Initial threshold value
@@ -59,7 +59,8 @@ def get_frame_at_time(cap, fps, time_sec, crop_percentage=70):
     
     return frame[y1:y2, x1:x2]
 
-def detect_keypoints_grid(image, num_keypoints=500, grid_size=(4, 4)):
+def detect_keypoints_grid(image, num_keypoints=500, grid_size=(1, 1)):
+    # An alternative to get evenly distributed keypoints.
     orb = cv2.ORB_create(num_keypoints)
     h, w = image.shape[:2]
     keypoints = []
@@ -154,11 +155,14 @@ def align_images(image1, image2, crop_size=20):
     global numOfKeypoints
     global kpGraphRigidity
     orb = cv2.ORB_create(numOfKeypoints)
-    keypoints1, descriptors1 = detect_keypoints_grid(image1)
-    keypoints2, descriptors2 = detect_keypoints_grid(image2)
-    # keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
-    # keypoints2, descriptors2 = orb.detectAndCompute(image2, None)
+    # keypoints1, descriptors1 = detect_keypoints_grid(image1, num_keypoints=numOfKeypoints)
+    # keypoints2, descriptors2 = detect_keypoints_grid(image2, num_keypoints=numOfKeypoints)
+    keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
+    keypoints2, descriptors2 = orb.detectAndCompute(image2, None)
     
+    # if descriptors1 is None or descriptors2 is None or descriptors1.shape[0] == 0 or descriptors2.shape[0] == 0:
+    #     raise ValueError("Error: Descriptors are empty. Adjust feature extraction settings.")
+
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     matches = bf.match(descriptors1, descriptors2)
     matches = sorted(matches, key=lambda x: x.distance)[:50]
@@ -219,7 +223,7 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.50
-process_video("cars.mp4", startTime=33, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=5.0, sizeMinThresh=1)
+process_video("pidor2.mp4", startTime=0, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=5.0, sizeMinThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
