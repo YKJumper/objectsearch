@@ -210,24 +210,6 @@ def align_images(image1, image2, crop_size=10):
     
     return align_image1, align_image2, left_top, right_bottom
 
-# def split_grid(image, grid_size=(4, 4), overlap=20):
-#     h, w = image.shape[:2]
-#     step_x, step_y = w // grid_size[1], h // grid_size[0]
-#     patches = []
-#     for i in range(grid_size[0]):
-#         for j in range(grid_size[1]):
-#             x1, y1 = max(j * step_x - overlap, 0), max(i * step_y - overlap, 0)
-#             x2, y2 = min((j + 1) * step_x + overlap, w), min((i + 1) * step_y + overlap, h)
-#             patches.append((image[y1:y2, x1:x2], (x1, y1)))
-#     return patches
-
-def detect_changes(image1, image2):
-    # Returns the changed regions between two images
-    aligned_image1, aligned_image2, left_top, right_bottom = align_images(image1, image2)
-    diff = cv2.absdiff(aligned_image1[0], aligned_image2[0])
-    (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
-    return (maxLoc, maxVal, image1[1], left_top)
-
 def display_frames(frame_queue, DisplayTime=0.5):
     global bitBrightSelector
     while True:
@@ -248,7 +230,7 @@ bitBrightSelector = 0.75
 calibration = np.load("camera_calibration.npz")
 cameraMatrix = calibration["cameraMatrix"]
 distCoeffs = calibration["distCoeffs"]
-process_video("wavedBalcony.mp4", startTime=0, timeStep=0.3, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("orlan.mp4", startTime=11, timeStep=0.3, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
