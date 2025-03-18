@@ -154,7 +154,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
 def align_images(image1, image2, crop_size=20):
     global numOfKeypoints
     global kpGraphRigidity
-    orb = cv2.ORB_create(numOfKeypoints)
+    orb = cv2.ORB_create(nfeatures = numOfKeypoints, edgeThreshold = 7)
     # keypoints1, descriptors1 = detect_keypoints_grid(image1, num_keypoints=numOfKeypoints)
     # keypoints2, descriptors2 = detect_keypoints_grid(image2, num_keypoints=numOfKeypoints)
     keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
@@ -191,7 +191,7 @@ def align_images(image1, image2, crop_size=20):
     src_pts = np.float32([keypoints2[m.trainIdx].pt for m in rigid_matches]).reshape(-1, 1, 2)
     dst_pts = np.float32([keypoints1[m.queryIdx].pt for m in rigid_matches]).reshape(-1, 1, 2)
     
-    M, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
+    M, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=3, maxIters=2000, confidence=0.99, refineIters=100)
     align_image2 = cv2.warpAffine(image2, M, (image1.shape[1], image1.shape[0]))
 
     # Set the bounding box of the largest dark region
@@ -223,7 +223,7 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.50
-process_video("pidor2.mp4", startTime=0, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=5.0, sizeMinThresh=1)
+process_video("cars.mp4", startTime=33, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=0.33, sizeMinThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
