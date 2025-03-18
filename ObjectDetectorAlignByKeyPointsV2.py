@@ -81,10 +81,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
     while T1 + timeStep <= endTime:
         raw_image1 = get_frame_at_time(cap, fps, T1)
         raw_image2 = get_frame_at_time(cap, fps, T1 + timeDelta)
-        
-        frame_height, frame_width = raw_image1.shape[:2]
-        crop_size = int(max(frame_height, frame_width)*math.sin(rotationSpeed*timeDelta/180*math.pi))
-        
+
         # Ensure image1 and image2 are in the correct format
         if raw_image1 is None or raw_image2 is None:
             print("Error: Could not retrieve frames from the video.")
@@ -94,7 +91,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         gray2 = cv2.cvtColor(raw_image2, cv2.COLOR_BGR2GRAY)
         
         # Align the two frames
-        alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2, crop_size)
+        alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2)
         diff = cv2.absdiff(alligned_image1, alligned_image2)
         frame_queue.put(diff)
         
@@ -123,7 +120,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
     cap.release()
     frame_queue.put(None)  # Signal processing completion
 
-def align_images(image1, image2, crop_size=20):
+def align_images(image1, image2):
     global numOfKeypoints
     global kpGraphRigidity
     orb = cv2.ORB_create(numOfKeypoints)
@@ -162,17 +159,50 @@ def align_images(image1, image2, crop_size=20):
     align_image2 = cv2.warpAffine(image2, M, (image1.shape[1], image1.shape[0]))
 
     # Set the bounding box of the largest dark region
-    h, w = image1.shape[:2]
-    x, y, w, h = crop_size, crop_size, w - 2 * crop_size, h - 2 * crop_size
-    
-    left_top = (x, y)
-    right_bottom = (x + w, y + h)
-    
-    # Crop the aligned images to exclude light zones
-    align_image1 = image1[y:y + h, x:x + w]
-    align_image2 = align_image2[y:y + h, x:x + w]
-    
+    align_image1, align_image2, left_top, right_bottom = compute_intersection(image1, align_image2, M)
+
     return align_image1, align_image2, left_top, right_bottom
+
+def compute_intersection(image1, image2, M):
+    """
+    Crops image1 and image2 to their intersection region based on transformation matrix M.
+    
+    Parameters:
+        image1 (numpy.ndarray): First aligned image.
+        image2 (numpy.ndarray): Second aligned image.
+        M (numpy.ndarray): 2x3 Affine transformation matrix.
+    
+    Returns:
+        tuple: Cropped image1 and image2 containing only the intersection region.
+    """
+    # Validate matrix
+    if M is None:
+        raise ValueError("Affine transformation matrix M is None")
+    
+    # Get image dimensions
+    h, w = image1.shape[:2]
+    
+    # Define corners of image1
+    corners = np.array([[0, 0], [w, 0], [0, h], [w, h]], dtype=np.float32)
+    
+    # Transform corners using M
+    transformed_corners = cv2.transform(np.array([corners]), M)[0]
+    
+    # Compute intersection region
+    x_min = max(0, int(np.ceil(max(0, transformed_corners[:, 0].min()))))
+    y_min = max(0, int(np.ceil(max(0, transformed_corners[:, 1].min()))))
+    x_max = min(w, int(np.floor(min(w, transformed_corners[:, 0].max()))))
+    y_max = min(h, int(np.floor(min(h, transformed_corners[:, 1].max()))))
+    
+    # Ensure valid intersection
+    if x_max <= x_min or y_max <= y_min:
+        raise ValueError("No valid intersection found.")
+    
+    # Crop images to the intersection region
+    cropped_image1 = image1[y_min:y_max, x_min:x_max]
+    cropped_image2 = image2[y_min:y_max, x_min:x_max]
+    
+    return cropped_image1, cropped_image2, (x_min, y_min), (x_max, y_max)
 
 def display_frames(frame_queue, DisplayTime=0.5):
     global bitBrightSelector
@@ -190,7 +220,7 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.75
-process_video("pidor2.mp4", startTime=0, timeStep=0.33, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("FullCars.mp4", startTime=33, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=0.33, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
