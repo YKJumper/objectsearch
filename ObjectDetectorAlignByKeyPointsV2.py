@@ -7,12 +7,10 @@ from queue import Queue
 
 global bitBrightSelector
 global bitThresh
-global rotationSpeed 
 global numOfKeypoints
 global kpGraphRigidity
-kpGraphRigidity = 3
-numOfKeypoints = 1500
-rotationSpeed = 10 # The camera rotation speed in degrees per second
+kpGraphRigidity = 1
+numOfKeypoints = 500
 bitThresh = 40  # Initial threshold value
 bitBrightSelector = 0.75 # Initial bright selector value
 
@@ -52,7 +50,7 @@ def get_frame_at_time(cap, fps, time_sec, crop_percentage=100):
     ret, frame = cap.read()
     if not ret:
         return None
-    
+
     # Crop the central square region
     height, width = frame.shape[:2]
     crop_size_y, crop_size_x = int(height * (crop_percentage / 100.0)), int(width * (crop_percentage / 100.0))
@@ -61,13 +59,59 @@ def get_frame_at_time(cap, fps, time_sec, crop_percentage=100):
     x2 = min(center_x + crop_size_x // 2, width)
     y1 = max(center_y - crop_size_y // 2, 0)
     y2 = min(center_y + crop_size_y // 2, height)
-    
+
     return frame[y1:y2, x1:x2]
+
+def compute_intersection(image1, image2, M):
+    """
+    Crops image1 and image2 to their intersection region based on transformation matrix M.
+    
+    Parameters:
+        image1 (numpy.ndarray): First aligned image.
+        image2 (numpy.ndarray): Second aligned image.
+        M (numpy.ndarray): 2x3 Affine transformation matrix.
+    
+    Returns:
+        tuple: Cropped image1 and image2 containing only the intersection region.
+    """
+    # Validate matrix
+    if M is None:
+        raise ValueError("Affine transformation matrix M is None")
+
+    # Get image dimensions
+    h, w = image1.shape[:2]
+    
+    # Define corners of image1
+    corners = np.array([[0, 0], [w, 0], [0, h], [w, h]], dtype=np.float32)
+
+    # Transform corners using M
+    transformed_corners = cv2.transform(np.array([corners]), M)[0]
+
+    # Extract individual transformed corner coordinates
+    left_top_x, left_top_y         = transformed_corners[0]
+    right_top_x, right_top_y       = transformed_corners[1]
+    left_bottom_x, left_bottom_y   = transformed_corners[2]
+    right_bottom_x, right_bottom_y = transformed_corners[3]
+
+    # Compute bounding box limits using specific corner coordinates
+    x_min = max(0, int(np.ceil(max(left_top_x, left_bottom_x))))
+    y_min = max(0, int(np.ceil(max(left_top_y, right_top_y))))
+    x_max = min(w, int(np.floor(min(right_bottom_x, right_top_x))))
+    y_max = min(h, int(np.floor(min(right_bottom_y, left_bottom_y))))
+
+    # Ensure valid intersection
+    if x_max <= x_min or y_max <= y_min:
+        raise ValueError("No valid intersection found.")
+
+    # Crop images to the intersection region
+    cropped_image1 = image1[y_min:y_max, x_min:x_max]
+    cropped_image2 = image2[y_min:y_max, x_min:x_max]
+
+    return cropped_image1, cropped_image2, (x_min, y_min), (x_max, y_max)
 
 def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTime=None, sizeThresh=1):
     global bitBrightSelector
     global bitThresh
-    global rotationSpeed
     global cameraMatrix
     global distCoeffs
     cap = cv2.VideoCapture(videoFile)
@@ -86,14 +130,12 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
     T1 = startTime
     while T1 + timeStep <= endTime:
         raw_image1 = get_frame_at_time(cap, fps, T1)
-        raw_image2 = get_frame_at_time(cap, fps, T1 + 0.75*timeDelta)
-        raw_image3 = get_frame_at_time(cap, fps, T1 + 1.5*timeDelta)
+        raw_image2 = get_frame_at_time(cap, fps, T1 + timeDelta)
         
         frame_height, frame_width = raw_image1.shape[:2]
-        crop_size = int(max(frame_height, frame_width)*math.sin(rotationSpeed*timeDelta/180*math.pi))
         
         # Ensure image1 and image2 are in the correct format
-        if raw_image1 is None or raw_image2 is None or raw_image3 is None:
+        if raw_image1 is None or raw_image2 is None:
             print("Error: Could not retrieve frames from the video.")
             break
         # Refine camera matrix
@@ -101,7 +143,6 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         # Undistort image
         raw_image1_udst = cv2.undistort(raw_image1, cameraMatrix, distCoeffs, None, newCameraMatrix)
         raw_image2_udst = cv2.undistort(raw_image2, cameraMatrix, distCoeffs, None, newCameraMatrix)
-        raw_image3_udst = cv2.undistort(raw_image3, cameraMatrix, distCoeffs, None, newCameraMatrix)
         
         # Undistort via remap
         # mapx, mapy = cv2.initUndistortRectifyMap(cameraMatrix, distCoeffs, None, newCameraMatrix, (frame_width, frame_height), 5)
@@ -112,7 +153,6 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         x, y, w, h = roi
         raw_image1_udst = raw_image1_udst[y:y+h, x:x+w]
         raw_image2_udst = raw_image2_udst[y:y+h, x:x+w]
-        raw_image3_udst = raw_image3_udst[y:y+h, x:x+w]
     
         # Show unalligned undistoted frames for reference only
         # diff0 = cv2.absdiff(raw_image1_udst, raw_image2_udst)
@@ -122,16 +162,11 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         
         gray1 = cv2.cvtColor(raw_image1_udst, cv2.COLOR_BGR2GRAY)
         gray2 = cv2.cvtColor(raw_image2_udst, cv2.COLOR_BGR2GRAY)
-        gray3 = cv2.cvtColor(raw_image3_udst, cv2.COLOR_BGR2GRAY)
         
         
         # Align the two frames
-        alligned_image1, alligned_image2, top_left0, right_bottom0 = align_images( gray1, gray2, crop_size)
-        diff0 = cv2.absdiff(alligned_image1, alligned_image2)
-        alligned_image1, alligned_image3, top_left0, right_bottom0 = align_images( gray1, gray3, crop_size)
-        diff1 = cv2.absdiff(alligned_image1, alligned_image3)
-        alligned_diff0, alligned_diff1, top_left1, right_bottom1 = align_images( diff0, diff1, crop_size)
-        diff = cv2.absdiff(alligned_diff0, alligned_diff1)
+        alligned_image1, alligned_image2, top_left0, right_bottom0 = align_images( gray1, gray2)
+        diff = cv2.absdiff(alligned_image1, alligned_image2)
         frame_queue.put(diff)
         
         (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
@@ -145,13 +180,13 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         for contour in contours:
             if cv2.contourArea(contour) > sizeThresh:
                 x, y, w, h = cv2.boundingRect(contour)
-                x, y = x + top_left0[0] + top_left1[0], y + top_left0[1] + top_left1[1]
+                x, y = x + top_left0[0], y + top_left0[1]
                 wext = int(w*(boxScale-1)/2)
                 hext = int(h*(boxScale-1)/2)
                 cv2.rectangle(raw_image2_udst, (x-wext, y-hext), (x + w + wext, y + h + hext), (0, 0, 255), 2)
         # Hihglight the maxLoc position
         selectionSide = 30
-        cv2.rectangle(raw_image2_udst, (maxLoc[0]-selectionSide//2 + top_left0[0] + top_left1[0], maxLoc[1]-selectionSide//2 + top_left0[1] + top_left1[1]), (maxLoc[0] + selectionSide//2 + top_left0[0] + top_left1[0], maxLoc[1] + selectionSide//2 + top_left0[1] + top_left1[1]), (0, 255, 0), 2)
+        cv2.rectangle(raw_image2_udst, (maxLoc[0]-selectionSide//2 + top_left0[0], maxLoc[1]-selectionSide//2 + top_left0[1]), (maxLoc[0] + selectionSide//2 + top_left0[0], maxLoc[1] + selectionSide//2 + top_left0[1]), (0, 255, 0), 2)
         
         frame_queue.put(raw_image2_udst)
         T1 += timeStep
@@ -159,7 +194,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
     cap.release()
     frame_queue.put(None)  # Signal processing completion
 
-def align_images(image1, image2, crop_size=10):
+def align_images(image1, image2):
     global numOfKeypoints
     global kpGraphRigidity
     orb = cv2.ORB_create(numOfKeypoints)
@@ -197,17 +232,8 @@ def align_images(image1, image2, crop_size=10):
     M, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
     align_image2 = cv2.warpAffine(image2, M, (image1.shape[1], image1.shape[0]))
 
-    # Set the bounding box of the largest dark region
-    h, w = image1.shape[:2]
-    x, y, w, h = crop_size, crop_size, w - 2 * crop_size, h - 2 * crop_size
-    
-    left_top = (x, y)
-    right_bottom = (x + w, y + h)
-    
-    # Crop the aligned images to exclude light zones
-    align_image1 = image1[y:y + h, x:x + w]
-    align_image2 = align_image2[y:y + h, x:x + w]
-    
+    align_image1, align_image2, left_top, right_bottom = compute_intersection(image1, align_image2, M)
+
     return align_image1, align_image2, left_top, right_bottom
 
 def display_frames(frame_queue, DisplayTime=0.5):
@@ -225,16 +251,13 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     display_frames(frame_queue, displayTime)
     processing_thread.join()
 
-bitBrightSelector = 0.75
+bitBrightSelector = 0.65
 # Load calibration data
 calibration = np.load("camera_calibration.npz")
 cameraMatrix = calibration["cameraMatrix"]
 distCoeffs = calibration["distCoeffs"]
-process_video("orlan.mp4", startTime=11, timeStep=0.3, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
+process_video("Stadium.mp4", startTime=0, timeStep=0.3, timeDelta=0.1, endTime=999, displayTime=5.0, sizeThresh=1)
 
-# "orlan.mp4", startTime=11,
-# "cars.mp4", startTime=33,
-# "pidor2.mp4", startTime=0,
 # "stableBalcony.mp4", startTime=18,
 # "wavedBalcony.mp4", startTime=0,
 # "Stadium.mp4", startTime=0,
