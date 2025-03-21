@@ -41,6 +41,53 @@ def resize_and_display(image, screen_width=1920, screen_height=1080, title="Dete
     cv2.waitKey(int(delay * 1000))
     cv2.destroyAllWindows()
 
+def compute_intersection(image1, image2, M):
+    """
+    Crops image1 and image2 to their intersection region based on transformation matrix M.
+    
+    Parameters:
+        image1 (numpy.ndarray): First aligned image.
+        image2 (numpy.ndarray): Second aligned image.
+        M (numpy.ndarray): 2x3 Affine transformation matrix.
+    
+    Returns:
+        tuple: Cropped image1 and image2 containing only the intersection region.
+    """
+    # Validate matrix
+    if M is None:
+        raise ValueError("Affine transformation matrix M is None")
+    
+    # Get image dimensions
+    h, w = image1.shape[:2]
+    
+    # Define corners of image1
+    corners = np.array([[0, 0], [w, 0], [0, h], [w, h]], dtype=np.float32)
+    
+    # Transform corners using M
+    transformed_corners = cv2.transform(np.array([corners]), M)[0]
+    
+    # Extract individual transformed corner coordinates
+    left_top_x, left_top_y         = transformed_corners[0]
+    right_top_x, right_top_y       = transformed_corners[1]
+    left_bottom_x, left_bottom_y   = transformed_corners[2]
+    right_bottom_x, right_bottom_y = transformed_corners[3]
+    
+    # Compute bounding box limits using specific corner coordinates
+    x_min = max(0, int(np.ceil(max(left_top_x, left_bottom_x))))
+    y_min = max(0, int(np.ceil(max(left_top_y, right_top_y))))
+    x_max = min(w, int(np.floor(min(right_bottom_x, right_top_x))))
+    y_max = min(h, int(np.floor(min(right_bottom_y, left_bottom_y))))
+    
+    # Ensure valid intersection
+    if x_max <= x_min or y_max <= y_min:
+        raise ValueError("No valid intersection found.")
+    
+    # Crop images to the intersection region
+    cropped_image1 = image1[y_min:y_max, x_min:x_max]
+    cropped_image2 = image2[y_min:y_max, x_min:x_max]
+    
+    return cropped_image1, cropped_image2, (x_min, y_min), (x_max, y_max)
+
 def get_frame_at_time(cap, fps, time_sec, crop_percentage=70):
     frame_number = int(time_sec * fps)
     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
@@ -153,7 +200,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         cap.release()  # Ensure release in all cases
         frame_queue.put(None)  # Signal completion
 
-def align_images(image1, image2, crop_size=20):
+def align_images(image1, image2):
     global numOfKeypoints
     global kpGraphRigidity
     orb = cv2.ORB_create(nfeatures = numOfKeypoints, edgeThreshold = 7)
@@ -195,17 +242,8 @@ def align_images(image1, image2, crop_size=20):
     M, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=3, maxIters=2000, confidence=0.99, refineIters=100)
     align_image2 = cv2.warpAffine(image2, M, (image1.shape[1], image1.shape[0]))
 
-    # Set the bounding box of the largest dark region
-    h, w = image1.shape[:2]
-    x, y, w, h = crop_size, crop_size, w - 2 * crop_size, h - 2 * crop_size
-    
-    left_top = (x, y)
-    right_bottom = (x + w, y + h)
-    
-    # Crop the aligned images to exclude light zones
-    align_image1 = image1[y:y + h, x:x + w]
-    align_image2 = align_image2[y:y + h, x:x + w]
-    
+    align_image1, align_image2, left_top, right_bottom = compute_intersection(image1, align_image2, M)
+
     return align_image1, align_image2, left_top, right_bottom
 
 def display_frames(frame_queue, DisplayTime=0.5):
