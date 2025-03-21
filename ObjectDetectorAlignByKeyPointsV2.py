@@ -7,12 +7,10 @@ from queue import Queue
 
 global bitBrightSelector
 global bitThresh
-global rotationSpeed 
 global numOfKeypoints
 global kpGraphRigidity
 kpGraphRigidity = 2
 numOfKeypoints = 500
-rotationSpeed = 20 # The camera rotation speed in degrees per second
 bitThresh = 40  # Initial threshold value
 bitBrightSelector = 0.75 # Initial bright selector value
 
@@ -63,7 +61,6 @@ def get_frame_at_time(cap, fps, time_sec, crop_percentage=70):
 def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTime=None, sizeThresh=1):
     global bitBrightSelector
     global bitThresh
-    global rotationSpeed
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Could not open video file.")
