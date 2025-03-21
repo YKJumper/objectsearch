@@ -101,7 +101,7 @@ def get_frame_at_time(cap, fps, time_sec, crop_percentage=70):
     x2 = min(center_x + crop_size_x // 2, width)
     y1 = max(center_y - crop_size_y // 2, 0)
     y2 = min(center_y + crop_size_y // 2, height)
-    
+
     return frame[y1:y2, x1:x2]
 
 def detect_keypoints_grid(image, num_keypoints=500, grid_size=(1, 1)):
@@ -256,7 +256,7 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.50
-process_video("FullCars.mp4", startTime=33, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=0.33, sizeMinThresh=1)
+process_video("pidor2.mp4", startTime=0, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=0.33, sizeMinThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
