@@ -94,12 +94,13 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2)
         diff = cv2.absdiff(alligned_image1, alligned_image2)
         frame_queue.put(diff)
-        
-        (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
+
+        diff_gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+        (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff_gray)
 
         bitThresh = int(bitBrightSelector*(maxVal-minVal)+minVal)
         # bitThresh = int(bitBrightSelector*maxVal)
-        _, thresh = cv2.threshold(diff, bitThresh, 255, cv2.THRESH_BINARY)
+        _, thresh = cv2.threshold(diff_gray, bitThresh, 255, cv2.THRESH_BINARY)
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         boxScale = 3
@@ -154,14 +155,18 @@ def align_images(image1, image2):
     
     src_pts = np.float32([keypoints2[m.trainIdx].pt for m in rigid_matches]).reshape(-1, 1, 2)
     dst_pts = np.float32([keypoints1[m.queryIdx].pt for m in rigid_matches]).reshape(-1, 1, 2)
-    
+
     M, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
     align_image2 = cv2.warpAffine(image2, M, (image1.shape[1], image1.shape[0]))
 
     # Set the bounding box of the largest dark region
     align_image1, align_image2, left_top, right_bottom = compute_intersection(image1, align_image2, M)
 
-    return align_image1, align_image2, left_top, right_bottom
+    # Draw keypoints
+    src_output = cv2.drawKeypoints(align_image2, keypoints2, None, color=(0, 255, 0))
+    dst_output = cv2.drawKeypoints(align_image1, keypoints1, None, color=(255, 0, 0)) 
+
+    return dst_output, src_output, left_top, right_bottom
 
 def compute_intersection(image1, image2, M):
     """
@@ -188,11 +193,17 @@ def compute_intersection(image1, image2, M):
     # Transform corners using M
     transformed_corners = cv2.transform(np.array([corners]), M)[0]
     
-    # Compute intersection region
-    x_min = max(0, int(np.ceil(max(0, transformed_corners[:, 0].min()))))
-    y_min = max(0, int(np.ceil(max(0, transformed_corners[:, 1].min()))))
-    x_max = min(w, int(np.floor(min(w, transformed_corners[:, 0].max()))))
-    y_max = min(h, int(np.floor(min(h, transformed_corners[:, 1].max()))))
+    # Extract individual transformed corner coordinates
+    left_top_x, left_top_y         = transformed_corners[0]
+    right_top_x, right_top_y       = transformed_corners[1]
+    left_bottom_x, left_bottom_y   = transformed_corners[2]
+    right_bottom_x, right_bottom_y = transformed_corners[3]
+    
+    # Compute bounding box limits using specific corner coordinates
+    x_min = max(0, int(np.ceil(max(left_top_x, left_bottom_x))))
+    y_min = max(0, int(np.ceil(max(left_top_y, right_top_y))))
+    x_max = min(w, int(np.floor(min(right_bottom_x, right_top_x))))
+    y_max = min(h, int(np.floor(min(right_bottom_y, left_bottom_y))))
     
     # Ensure valid intersection
     if x_max <= x_min or y_max <= y_min:
@@ -220,10 +231,11 @@ def process_video(videoFile, startTime, timeStep, timeDelta, endTime=None, displ
     processing_thread.join()
 
 bitBrightSelector = 0.75
-process_video("FullCars.mp4", startTime=33, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=0.33, sizeThresh=1)
+process_video("FullCars.mp4", startTime=39, timeStep=0.33, timeDelta=0.15, endTime=999, displayTime=100.33, sizeThresh=1)
 
 # "orlan.mp4", startTime=11,
 # "cars.mp4", startTime=33,
+# "FullCars.mp4", startTime=39,
 # "pidor2.mp4", startTime=0,
 # "stableBalcony.mp4", startTime=18,
 # "wavedBalcony.mp4", startTime=0,
