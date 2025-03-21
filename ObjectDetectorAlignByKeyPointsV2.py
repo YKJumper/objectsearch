@@ -7,12 +7,10 @@ from queue import Queue
 
 global bitBrightSelector
 global bitThresh
-global rotationSpeed 
 global numOfKeypoints
 global kpGraphRigidity
 kpGraphRigidity = 3
 numOfKeypoints = 500
-rotationSpeed = 15 # The camera rotation speed in degrees per second
 bitThresh = 40  # Initial threshold value
 bitBrightSelector = 0.75 # Initial bright selector value
 
@@ -130,7 +128,6 @@ def detect_keypoints_grid(image, num_keypoints=500, grid_size=(1, 1)):
 def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTime=None, sizeMinThresh=1, sizeMaxThresh=10):
     global bitBrightSelector
     global bitThresh
-    global rotationSpeed
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Could not open video file.")
@@ -150,10 +147,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
             raw_image1 = get_frame_at_time(cap, fps, T1)
             raw_image2 = get_frame_at_time(cap, fps, T1 + 0.75*timeDelta)
             raw_image3 = get_frame_at_time(cap, fps, T1 + 1.5*timeDelta)
-            
-            frame_height, frame_width = raw_image1.shape[:2]
-            crop_size = int(max(frame_height, frame_width)*math.sin(rotationSpeed*timeDelta/180*math.pi))
-            
+
             # Ensure image1 and image2 are in the correct format
             if raw_image1 is None or raw_image2 is None or raw_image3 is None:
                 print("Error: Could not retrieve frames from the video.")
@@ -164,11 +158,11 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
             gray3 = cv2.cvtColor(raw_image3, cv2.COLOR_BGR2GRAY)
             
             # Align the two frames
-            alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2, crop_size)
+            alligned_image1, alligned_image2, top_left, right_bottom = align_images( gray1, gray2)
             diff0 = cv2.absdiff(alligned_image1, alligned_image2)
-            alligned_image1, alligned_image3, top_left, right_bottom = align_images( gray1, gray3, crop_size)
+            alligned_image1, alligned_image3, top_left, right_bottom = align_images( gray1, gray3)
             diff1 = cv2.absdiff(alligned_image1, alligned_image3)
-            alligned_diff0, alligned_diff1, top_left_diff, right_bottom_diff = align_images( diff0, diff1, crop_size)
+            alligned_diff0, alligned_diff1, top_left_diff, right_bottom_diff = align_images( diff0, diff1)
             diff = cv2.absdiff(alligned_diff0, alligned_diff1)
             frame_queue.put(diff)
     
