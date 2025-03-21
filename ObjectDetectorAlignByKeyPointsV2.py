@@ -188,11 +188,17 @@ def compute_intersection(image1, image2, M):
     # Transform corners using M
     transformed_corners = cv2.transform(np.array([corners]), M)[0]
     
-    # Compute intersection region
-    x_min = max(0, int(np.ceil(max(0, transformed_corners[:, 0].min()))))
-    y_min = max(0, int(np.ceil(max(0, transformed_corners[:, 1].min()))))
-    x_max = min(w, int(np.floor(min(w, transformed_corners[:, 0].max()))))
-    y_max = min(h, int(np.floor(min(h, transformed_corners[:, 1].max()))))
+    # Extract individual transformed corner coordinates
+    left_top_x, left_top_y         = transformed_corners[0]
+    right_top_x, right_top_y       = transformed_corners[1]
+    left_bottom_x, left_bottom_y   = transformed_corners[2]
+    right_bottom_x, right_bottom_y = transformed_corners[3]
+    
+    # Compute bounding box limits using specific corner coordinates
+    x_min = max(0, int(np.ceil(max(left_top_x, left_bottom_x))))
+    y_min = max(0, int(np.ceil(max(left_top_y, right_top_y))))
+    x_max = min(w, int(np.floor(min(right_bottom_x, right_top_x))))
+    y_max = min(h, int(np.floor(min(right_bottom_y, left_bottom_y))))
     
     # Ensure valid intersection
     if x_max <= x_min or y_max <= y_min:
