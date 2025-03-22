@@ -95,7 +95,7 @@ def process_frames(videoFile, startTime, timeStep, timeDelta, frame_queue, endTi
         diff = cv2.absdiff(alligned_image1, alligned_image2)
         frame_queue.put(diff)
 
-        diff_gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+        diff_gray = diff # cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
         (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff_gray)
 
         bitThresh = int(bitBrightSelector*(maxVal-minVal)+minVal)
