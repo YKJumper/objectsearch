@@ -126,34 +126,34 @@ def highlight_motion(frame1, frame2, bbox_history=None, max_history=15, sizeThre
         diff = cv2.absdiff(aligned1, aligned2)
 
     minVal, maxVal, _, maxLoc = cv2.minMaxLoc(diff)
-    bitThresh = int(bitBrightSelector * (maxVal - minVal) + minVal)
-    _, thresh = cv2.threshold(diff, bitThresh, 255, cv2.THRESH_BINARY)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # bitThresh = int(bitBrightSelector * (maxVal - minVal) + minVal)
+    # _, thresh = cv2.threshold(diff, bitThresh, 255, cv2.THRESH_BINARY)
+    # contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Keep a history of bounding boxes to smooth motion
-    boxes = []
-    for contour in contours:
-        if cv2.contourArea(contour) > sizeThresh:
-            x, y, w, h = cv2.boundingRect(contour)
-            x, y = x + top_left[0], y + top_left[1]
-            boxes.append((x, y, w, h))
+    # # Keep a history of bounding boxes to smooth motion
+    # boxes = []
+    # for contour in contours:
+    #     if cv2.contourArea(contour) > sizeThresh:
+    #         x, y, w, h = cv2.boundingRect(contour)
+    #         x, y = x + top_left[0], y + top_left[1]
+    #         boxes.append((x, y, w, h))
 
-    if bbox_history is not None:
-        bbox_history.append(boxes)
-        if len(bbox_history) > max_history:
-            bbox_history.popleft()
+    # if bbox_history is not None:
+    #     bbox_history.append(boxes)
+    #     if len(bbox_history) > max_history:
+    #         bbox_history.popleft()
 
-        # Compute average boxes
-        smoothed_boxes = []
-        for i in range(len(bbox_history[0])):
-            coords = np.array([b[i] for b in bbox_history if len(b) > i])
-            avg = np.mean(coords, axis=0).astype(int)
-            smoothed_boxes.append(tuple(avg))
-        boxes = smoothed_boxes
+    #     # Compute average boxes
+    #     smoothed_boxes = []
+    #     for i in range(len(bbox_history[0])):
+    #         coords = np.array([b[i] for b in bbox_history if len(b) > i])
+    #         avg = np.mean(coords, axis=0).astype(int)
+    #         smoothed_boxes.append(tuple(avg))
+    #     boxes = smoothed_boxes
 
     annotated_frame = frame2.copy()
-    for (x, y, w, h) in boxes:
-        cv2.rectangle(annotated_frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
+    # for (x, y, w, h) in boxes:
+    #     cv2.rectangle(annotated_frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
 
     # Mark strongest change
     selectionSide = 30
@@ -195,6 +195,8 @@ def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, o
     bbox_history = deque()
 
     while cap.isOpened() and current_time <= end_time:
+        frame_number = int(current_time * fps)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
         ret, curr_frame = cap.read()
         if not ret:
             break
@@ -210,7 +212,7 @@ def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, o
             break
 
         prev_frame = curr_frame
-        current_time += 1 / fps
+        current_time += 5 / fps
 
     cap.release()
     if writer:
@@ -218,7 +220,7 @@ def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, o
     cv2.destroyAllWindows()
 
 # Play from 33s to 60s, enable GPU, smoothing, and save output
-play_and_detect("FullCars.mp4", start_time=35, end_time=60, save_output=True)
+play_and_detect("FullCars.mp4", start_time=35, end_time=80, save_output=True)
 
 # "orlan.mp4", start_time=11,
 # "cars.mp4", start_time=33,
