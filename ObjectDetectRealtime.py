@@ -199,12 +199,12 @@ def play_and_detect(videoFile, start_time=0, end_time=None):
         if not ret:
             break
     
-        start_tick = cv2.getTickCount()  # 🕒 Start timing
+        start_tick = cv2.getTickCount()  #Start timing
     
         curr_frame = crop_frame(frame)
         detected_frame = highlight_motion(prev_frame, curr_frame)
     
-        end_tick = cv2.getTickCount()  # 🕒 End timing
+        end_tick = cv2.getTickCount()  #End timing
         time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000  # convert to ms
     
         cv2.imshow("Real-time Object Detection", detected_frame)
