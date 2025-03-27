@@ -138,15 +138,21 @@ def play_and_detect(videoFile, start_time=0, end_time=None):
         ret, curr_frame = cap.read()
         if not ret:
             break
-
+        start_tick = cv2.getTickCount()  #Start timing
+    
         detected_frame = highlight_motion(prev_frame, curr_frame)
-
+    
+        end_tick = cv2.getTickCount()  #End timing
+        time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000  # convert to ms
+    
         cv2.imshow("Real-time Object Detection", detected_frame)
+    
         if cv2.waitKey(30) & 0xFF == 27:  # ESC key to stop
             break
-
+    
         prev_frame = curr_frame
         current_time += 5 / fps
+        print(f"Real-time Object Detection - {time_ms:.2f} ms")
 
     cap.release()
     cv2.destroyAllWindows()
