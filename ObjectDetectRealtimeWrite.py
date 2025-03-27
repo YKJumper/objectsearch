@@ -1,8 +1,10 @@
 import cv2
 import numpy as np
+import time
+from collections import deque
 
 # Global parameters
-bitBrightSelector = 0.75
+bitBrightSelector = 0.65
 bitThresh = 40
 
 def align_images(image1, image2, s=0.2, numOfKeypoints=500):
@@ -64,7 +66,10 @@ def align_images(image1, image2, s=0.2, numOfKeypoints=500):
     M_small, inliers = cv2.estimateAffine2D(
     src_pts, dst_pts,
     method=cv2.RANSAC,
-    ransacReprojThreshold=5.0)
+    ransacReprojThreshold=5.0,  # Looser threshold for speed
+    maxIters=1000,              # Fewer iterations
+    confidence=0.98,            # Slightly reduced confidence
+    refineIters=10)             # Fewer refinement steps
 
     if M_small is None:
         return image1, image2, (0, 0), (0, 0)
@@ -170,13 +175,15 @@ def crop_frame(frame, crop_percentage=70):
 
     return frame[y1:y2, x1:x2]
 
-def play_and_detect(videoFile, start_time=0, end_time=None):
+def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, output_file="output_with_motion.avi"):
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Cannot open video.")
         return
 
     fps = cap.get(cv2.CAP_PROP_FPS)
+    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     total_time = total_frames / fps
 
@@ -185,6 +192,12 @@ def play_and_detect(videoFile, start_time=0, end_time=None):
 
     cap.set(cv2.CAP_PROP_POS_FRAMES, int(start_time * fps))
     current_time = start_time
+
+    # Setup video writer
+    writer = None
+    if save_output:
+        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        writer = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
 
     ret, frame = cap.read()
     if not ret:
@@ -198,26 +211,32 @@ def play_and_detect(videoFile, start_time=0, end_time=None):
         ret, frame = cap.read()
         if not ret:
             break
-    
-        start_tick = cv2.getTickCount()  # 🕒 Start timing
-    
         curr_frame = crop_frame(frame)
-        detected_frame = highlight_motion(prev_frame, curr_frame)
-    
-        end_tick = cv2.getTickCount()  # 🕒 End timing
-        time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000  # convert to ms
-    
-        cv2.imshow("Real-time Object Detection", detected_frame)
-    
-        if cv2.waitKey(30) & 0xFF == 27:  # ESC key to stop
+
+        annotated_frame = highlight_motion(prev_frame, curr_frame)
+
+        cv2.imshow("Real-time Object Detection", annotated_frame)
+        if save_output:
+            writer.write(annotated_frame)
+
+        key = cv2.waitKey(int(1000 / fps))
+        if key == 27:  # ESC
             break
-    
+
         prev_frame = curr_frame
         current_time += 5 / fps
-        print(f"Real-time Object Detection - {time_ms:.2f} ms")
 
     cap.release()
+    if writer:
+        writer.release()
     cv2.destroyAllWindows()
 
-# Run real-time detection
-play_and_detect("FullCars.mp4", start_time=35, end_time=80)
+# Play from 33s to 60s, enable GPU, smoothing, and save output
+play_and_detect("FullCars.mp4", start_time=35, end_time=80, save_output=True)
+
+# "orlan.mp4", start_time=11,
+# "FullCars.mp4", start_time=35,
+# "pidor2.mp4", start_time=0,
+# "stableBalcony.mp4", start_time=18,
+# "wavedBalcony.mp4", start_time=0,
+# "Stadium.mp4", start_time=0,
