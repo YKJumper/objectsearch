@@ -32,6 +32,8 @@ def align_images(image1, image2, s=0.2, numOfKeypoints=500):
 
     if descriptors1 is None or descriptors2 is None:
         return image1, image2, (0, 0), (0, 0)
+    if len(descriptors1) < 2 or len(descriptors2) < 2:
+        return image1, image2, (0, 0), (0, 0)
 
     # 3. Use FLANN + LSH for binary descriptors
     index_params = dict(algorithm=6,  # FLANN_INDEX_LSH
@@ -158,7 +160,7 @@ def highlight_motion(frame1, frame2, m=1, selectionSide=30):
 
     return annotated_frame
 
-def crop_frame(frame, crop_percentage=70):
+def crop_frame(frame, crop_percentage):
     # Crop the central square region
     height, width = frame.shape[:2]
     crop_size_y, crop_size_x = int(height * (crop_percentage / 100.0)), int(width * (crop_percentage / 100.0))
@@ -170,7 +172,7 @@ def crop_frame(frame, crop_percentage=70):
 
     return frame[y1:y2, x1:x2]
 
-def play_and_detect(videoFile, start_time=0, end_time=None):
+def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70)
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Cannot open video.")
@@ -190,7 +192,7 @@ def play_and_detect(videoFile, start_time=0, end_time=None):
     if not ret:
         print("Error: Cannot read first frame.")
         return
-    prev_frame = crop_frame(frame)
+    prev_frame = crop_frame(frame, crop_percentage)
 
     while cap.isOpened() and current_time <= end_time:
         frame_number = int(current_time * fps)
@@ -201,7 +203,7 @@ def play_and_detect(videoFile, start_time=0, end_time=None):
     
         start_tick = cv2.getTickCount()  #Start timing
     
-        curr_frame = crop_frame(frame)
+        curr_frame = crop_frame(frame, crop_percentage)
         detected_frame = highlight_motion(prev_frame, curr_frame)
     
         end_tick = cv2.getTickCount()  #End timing

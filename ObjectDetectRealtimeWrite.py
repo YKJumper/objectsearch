@@ -7,7 +7,7 @@ from collections import deque
 bitBrightSelector = 0.65
 bitThresh = 40
 
-def align_images(image1, image2, s=0.2, numOfKeypoints=500):
+def align_images(image1, image2, s=0.25, numOfKeypoints=500):
     """
     Aligns image2 to image1 using downscaled images and FLANN+LSH matching.
     
@@ -34,6 +34,8 @@ def align_images(image1, image2, s=0.2, numOfKeypoints=500):
 
     if descriptors1 is None or descriptors2 is None:
         return image1, image2, (0, 0), (0, 0)
+    if len(descriptors1) < 2 or len(descriptors2) < 2:
+        return image1, image2, (0, 0), (0, 0)
 
     # 3. Use FLANN + LSH for binary descriptors
     index_params = dict(algorithm=6,  # FLANN_INDEX_LSH
@@ -50,7 +52,7 @@ def align_images(image1, image2, s=0.2, numOfKeypoints=500):
     for pair in matches:
         if len(pair) == 2:
             m, n = pair
-            if m.distance < 0.75 * n.distance:
+            if m.distance < 0.95 * n.distance:
                 good_matches.append(m)
 
 
@@ -134,7 +136,7 @@ def compute_intersection(image1, image2, M):
     
     return cropped_image1, cropped_image2, (x_min, y_min), (x_max, y_max)
 
-def highlight_motion(frame1, frame2, m=1, selectionSide=30):
+def highlight_motion(frame1, frame2, m=5, selectionSide=30):
     global bitThresh
     gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
@@ -163,7 +165,7 @@ def highlight_motion(frame1, frame2, m=1, selectionSide=30):
 
     return annotated_frame
 
-def crop_frame(frame, crop_percentage=70):
+def crop_frame(frame, crop_percentage):
     # Crop the central square region
     height, width = frame.shape[:2]
     crop_size_y, crop_size_x = int(height * (crop_percentage / 100.0)), int(width * (crop_percentage / 100.0))
@@ -175,15 +177,15 @@ def crop_frame(frame, crop_percentage=70):
 
     return frame[y1:y2, x1:x2]
 
-def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, output_file="output_with_motion.avi"):
+def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, output_file="output_with_motion.avi", crop_percentage=70):
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Cannot open video.")
         return
 
     fps = cap.get(cv2.CAP_PROP_FPS)
-    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)*crop_percentage/ 100.0)
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)*crop_percentage/ 100.0)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     total_time = total_frames / fps
 
@@ -203,7 +205,7 @@ def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, o
     if not ret:
         print("Error: Cannot read first frame.")
         return
-    prev_frame = crop_frame(frame)
+    prev_frame = crop_frame(frame, crop_percentage)
 
     while cap.isOpened() and current_time <= end_time:
         frame_number = int(current_time * fps)
@@ -214,7 +216,7 @@ def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, o
 
         start_tick = cv2.getTickCount()  #Start timing
 
-        curr_frame = crop_frame(frame)
+        curr_frame = crop_frame(frame, crop_percentage)
         annotated_frame = highlight_motion(prev_frame, curr_frame)
         
         end_tick = cv2.getTickCount()  #End timing
@@ -230,7 +232,7 @@ def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, o
             break
 
         prev_frame = curr_frame
-        current_time += 5 / fps
+        current_time += 3 / fps
         print(f"Real-time Object Detection - {time_ms:.2f} ms")
 
     cap.release()
