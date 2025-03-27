@@ -212,7 +212,7 @@ def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, o
             break
 
         prev_frame = curr_frame
-        current_time += 5 / fps
+        current_time += 1 / fps
 
     cap.release()
     if writer:
@@ -220,11 +220,11 @@ def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, o
     cv2.destroyAllWindows()
 
 # Play from 33s to 60s, enable GPU, smoothing, and save output
-play_and_detect("FullCars.mp4", start_time=35, end_time=80, save_output=True)
+play_and_detect("Stadium.mp4", start_time=0, end_time=80, save_output=True)
 
 # "orlan.mp4", start_time=11,
-# "cars.mp4", start_time=33,
-# "pidor2.mp4", sstart_time=0,
+# "FullCars.mp4", start_time=35,
+# "pidor2.mp4", start_time=0,
 # "stableBalcony.mp4", start_time=18,
 # "wavedBalcony.mp4", start_time=0,
 # "Stadium.mp4", start_time=0,

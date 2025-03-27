@@ -7,30 +7,73 @@ bitThresh = 40
 kpGraphRigidity = 2
 numOfKeypoints = 500
 
-def align_images(image1, image2):
-    orb = cv2.ORB_create(numOfKeypoints)
-    keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
-    keypoints2, descriptors2 = orb.detectAndCompute(image2, None)
+def align_images(image1, image2, s=0.25, numOfKeypoints=500):
+    """
+    Aligns image2 to image1 using downscaled images and FLANN+LSH matching.
+    
+    Parameters:
+        image1 (ndarray): Reference image.
+        image2 (ndarray): Image to be aligned.
+        s (float): Downscale factor (e.g., 0.5).
+        numOfKeypoints (int): Maximum number of keypoints to detect.
+    
+    Returns:
+        aligned_image1 (ndarray): Original image1 (unaltered).
+        aligned_image2 (ndarray): Transformed image2 aligned to image1.
+        left_top (tuple): Top-left corner of intersection region.
+        right_bottom (tuple): Bottom-right corner of intersection region.
+    """
+    # 1. Downscale both images
+    small_image1 = cv2.resize(image1, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
+    small_image2 = cv2.resize(image2, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
+
+    # 2. Detect ORB keypoints and descriptors
+    orb = cv2.ORB_create(nfeatures=numOfKeypoints)
+    keypoints1, descriptors1 = orb.detectAndCompute(small_image1, None)
+    keypoints2, descriptors2 = orb.detectAndCompute(small_image2, None)
 
     if descriptors1 is None or descriptors2 is None:
-        return image1, image2, (0, 0)
+        return image1, image2, (0, 0), (0, 0)
 
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    matches = bf.match(descriptors1, descriptors2)
-    matches = sorted(matches, key=lambda x: x.distance)[:50]
+    # 3. Use FLANN + LSH for binary descriptors
+    index_params = dict(algorithm=6,  # FLANN_INDEX_LSH
+                        table_number=6,
+                        key_size=12,
+                        multi_probe_level=1)
+    search_params = dict(checks=50)
+    flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-    if len(matches) < 10:
-        return image1, image2, (0, 0)
+    matches = flann.knnMatch(descriptors1, descriptors2, k=2)
 
-    src_pts = np.float32([keypoints2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
-    dst_pts = np.float32([keypoints1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+    # 4. Apply Lowe's ratio test
+    good_matches = []
+    for pair in matches:
+        if len(pair) == 2:
+            m, n = pair
+            if m.distance < 0.75 * n.distance:
+                good_matches.append(m)
 
-    M, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
-    if M is None:
-        return image1, image2, (0, 0)
 
+    if len(good_matches) < 10:
+        return image1, image2, (0, 0), (0, 0)
+
+    # 5. Extract matched points
+    src_pts = np.float32([keypoints2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+    dst_pts = np.float32([keypoints1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+
+    # 6. Estimate affine transform on small images
+    M_small, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
+    if M_small is None:
+        return image1, image2, (0, 0), (0, 0)
+
+    # 7. Scale the transform matrix to match original image scale
+    M = M_small.copy()
+    M[:, 2] /= s
+
+    # 8. Apply transformation to original full-sized image2
     aligned_image2 = cv2.warpAffine(image2, M, (image1.shape[1], image1.shape[0]))
-    # Set the bounding box of the largest dark region
+
+    # 9. Compute intersection (optional external function)
     align_image1, align_image2, left_top, right_bottom = compute_intersection(image1, aligned_image2, M)
 
     return align_image1, align_image2, left_top, right_bottom
@@ -83,7 +126,7 @@ def compute_intersection(image1, image2, M):
     
     return cropped_image1, cropped_image2, (x_min, y_min), (x_max, y_max)
 
-def highlight_motion(frame1, frame2):
+def highlight_motion(frame1, frame2, m=5, selectionSide=30):
     global bitThresh
     gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
@@ -91,27 +134,29 @@ def highlight_motion(frame1, frame2):
     aligned1, aligned2, top_left, right_bottom = align_images(gray1, gray2)
     diff = cv2.absdiff(aligned1, aligned2)
 
-    minVal, maxVal, _, maxLoc = cv2.minMaxLoc(diff)
-    # bitThresh = int(bitBrightSelector * (maxVal - minVal) + minVal)
-    # _, thresh = cv2.threshold(diff, bitThresh, 255, cv2.THRESH_BINARY)
-    # contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Flatten the difference image and find indices of top m brightest pixels
+    flat = diff.flatten()
+    if m >= len(flat):
+        m = len(flat)
 
+    top_indices = np.argpartition(flat, -m)[-m:]
+    top_indices = top_indices[np.argsort(flat[top_indices])[::-1]]  # sort descending by intensity
+
+    # Convert flat indices to (x, y) coordinates
+    h, w = diff.shape
+    ys, xs = np.unravel_index(top_indices, (h, w))
+
+    # Annotate the frame
     annotated_frame = frame2.copy()
-    # for contour in contours:
-    #     if cv2.contourArea(contour) > 1:
-    #         x, y, w, h = cv2.boundingRect(contour)
-    #         x, y = x + top_left[0], y + top_left[1]
-    #         cv2.rectangle(annotated_frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
+    for x, y in zip(xs, ys):
+        top_left_corner = (x - selectionSide // 2, y - selectionSide // 2)
+        bottom_right_corner = (x + selectionSide // 2, y + selectionSide // 2)
+        cv2.rectangle(annotated_frame, top_left_corner, bottom_right_corner, (0, 255, 0), 2)
 
-    # Highlight max diff location
-    selectionSide = 30
-    cv2.rectangle(annotated_frame,
-                  (maxLoc[0] - selectionSide // 2, maxLoc[1] - selectionSide // 2),
-                  (maxLoc[0] + selectionSide // 2, maxLoc[1] + selectionSide // 2),
-                  (0, 255, 0), 4)
     return annotated_frame
 
-def play_and_detect(videoFile, start_time=0, end_time=None):
+
+def play_and_detect(videoFile, start_time=0, end_time=None, croppPercentage=70):
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Cannot open video.")
