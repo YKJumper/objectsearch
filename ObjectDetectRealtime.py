@@ -7,7 +7,19 @@ bitThresh = 40
 
 def align_images(image1, image2, s=0.25):
     """
-    Aligns image2 to image1 using downscaled images and FLANN+LSH matching with AKAZE.
+    Aligns image2 to image1 using downscaled images and FLANN+LSH matching.
+    
+    Parameters:
+        image1 (ndarray): Reference image.
+        image2 (ndarray): Image to be aligned.
+        s (float): Downscale factor (e.g., 0.5).
+        numOfKeypoints (int): Maximum number of keypoints to detect.
+    
+    Returns:
+        aligned_image1 (ndarray): Original image1 (unaltered).
+        aligned_image2 (ndarray): Transformed image2 aligned to image1.
+        left_top (tuple): Top-left corner of intersection region.
+        right_bottom (tuple): Bottom-right corner of intersection region.
     """
     # 1. Downscale both images
     small_image1 = cv2.resize(image1, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
@@ -68,7 +80,6 @@ def align_images(image1, image2, s=0.25):
     align_image1, align_image2, left_top, right_bottom = compute_intersection(image1, aligned_image2, M)
 
     return align_image1, align_image2, left_top, right_bottom
-
 
 def compute_intersection(image1, image2, M):
     """

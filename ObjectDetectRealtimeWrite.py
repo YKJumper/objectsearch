@@ -7,7 +7,7 @@ from collections import deque
 bitBrightSelector = 0.65
 bitThresh = 40
 
-def align_images(image1, image2, s=0.25, numOfKeypoints=500):
+def align_images(image1, image2, s=0.25):
     """
     Aligns image2 to image1 using downscaled images and FLANN+LSH matching.
     
@@ -27,10 +27,10 @@ def align_images(image1, image2, s=0.25, numOfKeypoints=500):
     small_image1 = cv2.resize(image1, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
     small_image2 = cv2.resize(image2, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
 
-    # 2. Detect ORB keypoints and descriptors
-    orb = cv2.ORB_create(nfeatures=numOfKeypoints)
-    keypoints1, descriptors1 = orb.detectAndCompute(small_image1, None)
-    keypoints2, descriptors2 = orb.detectAndCompute(small_image2, None)
+    # 2. Detect AKAZE keypoints and descriptors
+    akaze = cv2.AKAZE_create()
+    keypoints1, descriptors1 = akaze.detectAndCompute(small_image1, None)
+    keypoints2, descriptors2 = akaze.detectAndCompute(small_image2, None)
 
     if descriptors1 is None or descriptors2 is None:
         return image1, image2, (0, 0), (0, 0)
@@ -52,9 +52,8 @@ def align_images(image1, image2, s=0.25, numOfKeypoints=500):
     for pair in matches:
         if len(pair) == 2:
             m, n = pair
-            if m.distance < 0.95 * n.distance:
+            if m.distance < 0.75 * n.distance:
                 good_matches.append(m)
-
 
     if len(good_matches) < 10:
         return image1, image2, (0, 0), (0, 0)
@@ -64,14 +63,10 @@ def align_images(image1, image2, s=0.25, numOfKeypoints=500):
     dst_pts = np.float32([keypoints1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
 
     # 6. Estimate affine transform on small images
-    # M_small, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
     M_small, inliers = cv2.estimateAffine2D(
-    src_pts, dst_pts,
-    method=cv2.RANSAC,
-    ransacReprojThreshold=5.0,  # Looser threshold for speed
-    maxIters=1000,              # Fewer iterations
-    confidence=0.98,            # Slightly reduced confidence
-    refineIters=10)             # Fewer refinement steps
+        src_pts, dst_pts,
+        method=cv2.RANSAC,
+        ransacReprojThreshold=5.0)
 
     if M_small is None:
         return image1, image2, (0, 0), (0, 0)
