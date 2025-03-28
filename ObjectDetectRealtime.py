@@ -5,30 +5,18 @@ import numpy as np
 bitBrightSelector = 0.75
 bitThresh = 40
 
-def align_images(image1, image2, s=0.2, numOfKeypoints=500):
+def align_images(image1, image2, s=0.25):
     """
-    Aligns image2 to image1 using downscaled images and FLANN+LSH matching.
-    
-    Parameters:
-        image1 (ndarray): Reference image.
-        image2 (ndarray): Image to be aligned.
-        s (float): Downscale factor (e.g., 0.5).
-        numOfKeypoints (int): Maximum number of keypoints to detect.
-    
-    Returns:
-        aligned_image1 (ndarray): Original image1 (unaltered).
-        aligned_image2 (ndarray): Transformed image2 aligned to image1.
-        left_top (tuple): Top-left corner of intersection region.
-        right_bottom (tuple): Bottom-right corner of intersection region.
+    Aligns image2 to image1 using downscaled images and FLANN+LSH matching with AKAZE.
     """
     # 1. Downscale both images
     small_image1 = cv2.resize(image1, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
     small_image2 = cv2.resize(image2, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
 
-    # 2. Detect ORB keypoints and descriptors
-    orb = cv2.ORB_create(nfeatures=numOfKeypoints)
-    keypoints1, descriptors1 = orb.detectAndCompute(small_image1, None)
-    keypoints2, descriptors2 = orb.detectAndCompute(small_image2, None)
+    # 2. Detect AKAZE keypoints and descriptors
+    akaze = cv2.AKAZE_create()
+    keypoints1, descriptors1 = akaze.detectAndCompute(small_image1, None)
+    keypoints2, descriptors2 = akaze.detectAndCompute(small_image2, None)
 
     if descriptors1 is None or descriptors2 is None:
         return image1, image2, (0, 0), (0, 0)
@@ -53,7 +41,6 @@ def align_images(image1, image2, s=0.2, numOfKeypoints=500):
             if m.distance < 0.75 * n.distance:
                 good_matches.append(m)
 
-
     if len(good_matches) < 10:
         return image1, image2, (0, 0), (0, 0)
 
@@ -62,11 +49,10 @@ def align_images(image1, image2, s=0.2, numOfKeypoints=500):
     dst_pts = np.float32([keypoints1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
 
     # 6. Estimate affine transform on small images
-    # M_small, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
     M_small, inliers = cv2.estimateAffine2D(
-    src_pts, dst_pts,
-    method=cv2.RANSAC,
-    ransacReprojThreshold=5.0)
+        src_pts, dst_pts,
+        method=cv2.RANSAC,
+        ransacReprojThreshold=5.0)
 
     if M_small is None:
         return image1, image2, (0, 0), (0, 0)
@@ -82,6 +68,7 @@ def align_images(image1, image2, s=0.2, numOfKeypoints=500):
     align_image1, align_image2, left_top, right_bottom = compute_intersection(image1, aligned_image2, M)
 
     return align_image1, align_image2, left_top, right_bottom
+
 
 def compute_intersection(image1, image2, M):
     """
@@ -131,7 +118,7 @@ def compute_intersection(image1, image2, M):
     
     return cropped_image1, cropped_image2, (x_min, y_min), (x_max, y_max)
 
-def highlight_motion(frame1, frame2, m=1, selectionSide=30):
+def highlight_motion(frame1, frame2, m=5, selectionSide=30):
     global bitThresh
     gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
@@ -172,7 +159,7 @@ def crop_frame(frame, crop_percentage):
 
     return frame[y1:y2, x1:x2]
 
-def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70)
+def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70):
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Cannot open video.")
@@ -200,10 +187,10 @@ def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70
         ret, frame = cap.read()
         if not ret:
             break
-    
-        start_tick = cv2.getTickCount()  #Start timing
-    
         curr_frame = crop_frame(frame, crop_percentage)
+        
+        start_tick = cv2.getTickCount()  #Start timing
+
         detected_frame = highlight_motion(prev_frame, curr_frame)
     
         end_tick = cv2.getTickCount()  #End timing
