@@ -165,18 +165,6 @@ def highlight_motion(frame1, frame2, m=5, selectionSide=30):
 
     return annotated_frame
 
-def crop_frame(frame, crop_percentage):
-    # Crop the central square region
-    height, width = frame.shape[:2]
-    crop_size_y, crop_size_x = int(height * (crop_percentage / 100.0)), int(width * (crop_percentage / 100.0))
-    center_x, center_y = width // 2, height // 2
-    x1 = max(center_x - crop_size_x // 2, 0)
-    x2 = min(center_x + crop_size_x // 2, width)
-    y1 = max(center_y - crop_size_y // 2, 0)
-    y2 = min(center_y + crop_size_y // 2, height)
-
-    return frame[y1:y2, x1:x2]
-
 def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, output_file="output_with_motion.avi", crop_percentage=70):
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
@@ -201,22 +189,20 @@ def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, o
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
         writer = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
 
-    ret, frame = cap.read()
+    ret, prev_frame = cap.read()
     if not ret:
         print("Error: Cannot read first frame.")
         return
-    prev_frame = crop_frame(frame, crop_percentage)
 
     while cap.isOpened() and current_time <= end_time:
         frame_number = int(current_time * fps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-        ret, frame = cap.read()
+        ret, curr_frame = cap.read()
         if not ret:
             break
 
         start_tick = cv2.getTickCount()  #Start timing
 
-        curr_frame = crop_frame(frame, crop_percentage)
         annotated_frame = highlight_motion(prev_frame, curr_frame)
         
         end_tick = cv2.getTickCount()  #End timing

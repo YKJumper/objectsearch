@@ -131,7 +131,7 @@ def compute_intersection(image1, image2, M):
     
     return cropped_image1, cropped_image2, (x_min, y_min), (x_max, y_max)
 
-def highlight_motion(frame1, frame2, m=1, selectionSide=30):
+def highlight_motion(frame1, frame2, m=5, selectionSide=30):
     global bitThresh
     gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
@@ -160,19 +160,7 @@ def highlight_motion(frame1, frame2, m=1, selectionSide=30):
 
     return annotated_frame
 
-def crop_frame(frame, crop_percentage):
-    # Crop the central square region
-    height, width = frame.shape[:2]
-    crop_size_y, crop_size_x = int(height * (crop_percentage / 100.0)), int(width * (crop_percentage / 100.0))
-    center_x, center_y = width // 2, height // 2
-    x1 = max(center_x - crop_size_x // 2, 0)
-    x2 = min(center_x + crop_size_x // 2, width)
-    y1 = max(center_y - crop_size_y // 2, 0)
-    y2 = min(center_y + crop_size_y // 2, height)
-
-    return frame[y1:y2, x1:x2]
-
-def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70):
+def play_and_detect(videoFile, start_time=0, end_time=None):
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Cannot open video.")
@@ -188,22 +176,20 @@ def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70
     cap.set(cv2.CAP_PROP_POS_FRAMES, int(start_time * fps))
     current_time = start_time
 
-    ret, frame = cap.read()
+    ret, prev_frame = cap.read()
     if not ret:
         print("Error: Cannot read first frame.")
         return
-    prev_frame = crop_frame(frame, crop_percentage)
 
     while cap.isOpened() and current_time <= end_time:
         frame_number = int(current_time * fps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-        ret, frame = cap.read()
+        ret, curr_frame = cap.read()
         if not ret:
             break
     
         start_tick = cv2.getTickCount()  #Start timing
-    
-        curr_frame = crop_frame(frame, crop_percentage)
+
         detected_frame = highlight_motion(prev_frame, curr_frame)
     
         end_tick = cv2.getTickCount()  #End timing
