@@ -5,7 +5,7 @@ import numpy as np
 bitBrightSelector = 0.75
 bitThresh = 40
 
-def align_images(image1, image2, s=0.2, numOfKeypoints=500):
+def align_images(image1, image2, s=0.25, numOfKeypoints=500):
     """
     Aligns image2 to image1 using downscaled images and FLANN+LSH matching.
     
