@@ -172,7 +172,7 @@ def crop_frame(frame, crop_percentage):
 
     return frame[y1:y2, x1:x2]
 
-def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70)
+def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70):
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Cannot open video.")
