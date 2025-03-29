@@ -12,6 +12,10 @@ def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descripto
     Parameters:
         image1 (ndarray): Reference image.
         image2 (ndarray): Image to be aligned.
+        keypoints1 : Resized reference image keypoints.
+        descriptors1 : Resized reference image keypoint descriptors.
+        keypoints2 : Resized to be aligned image keypoints.
+        descriptors2 : Resized to be aligned image keypoint descriptors.
         s (float): Downscale factor (e.g., 0.5).
         numOfKeypoints (int): Maximum number of keypoints to detect.
     
@@ -21,6 +25,9 @@ def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descripto
         left_top (tuple): Top-left corner of intersection region.
         right_bottom (tuple): Bottom-right corner of intersection region.
     """
+    # Get image dimensions
+    h, w = image1.shape[:2]
+
     # 3. Use FLANN + LSH for binary descriptors
     index_params = dict(algorithm=6,  # FLANN_INDEX_LSH
                         table_number=6,
@@ -62,32 +69,27 @@ def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descripto
     M[:, 2] /= s
 
     # 8. Apply transformation to original full-sized image2
-    aligned_image2 = cv2.warpAffine(image2, M, (image1.shape[1], image1.shape[0]))
+    aligned_image2 = cv2.warpAffine(image2, M, (w, h))
 
     # 9. Compute intersection (optional external function)
-    align_image1, align_image2, left_top, right_bottom = compute_intersection(image1, aligned_image2, M)
+    x_min, y_min, x_max, y_max = compute_intersection(h, w, M)
+    # Crop images to the intersection region
+    aligned_image1 = image1[y_min:y_max, x_min:x_max]
+    aligned_image2 = aligned_image2[y_min:y_max, x_min:x_max]
 
-    return align_image1, align_image2, left_top, right_bottom
+    return aligned_image1, aligned_image2, (x_min, y_min), (x_max, y_max)
 
-def compute_intersection(image1, image2, M):
+def compute_intersection(h, w, M):
     """
-    Crops image1 and image2 to their intersection region based on transformation matrix M.
+    Returns image1 and image2 intersection region coordinates based on transformation matrix M.
     
     Parameters:
-        image1 (numpy.ndarray): First aligned image.
-        image2 (numpy.ndarray): Second aligned image.
+        h, w (integer) -- image1 height and width
         M (numpy.ndarray): 2x3 Affine transformation matrix.
     
     Returns:
-        tuple: Cropped image1 and image2 containing only the intersection region.
+        tuple: the intersection left upper and right bottom region coordinates.
     """
-    # Validate matrix
-    if M is None:
-        raise ValueError("Affine transformation matrix M is None")
-    
-    # Get image dimensions
-    h, w = image1.shape[:2]
-    
     # Define corners of image1
     corners = np.array([[0, 0], [w, 0], [0, h], [w, h]], dtype=np.float32)
     
@@ -109,13 +111,9 @@ def compute_intersection(image1, image2, M):
     # Ensure valid intersection
     if x_max <= x_min or y_max <= y_min:
         x_min, y_min, x_max, y_max = 0, 0, w, h
-        # raise ValueError("No valid intersection found.")
+        print("Error: No valid intersection found.")
     
-    # Crop images to the intersection region
-    cropped_image1 = image1[y_min:y_max, x_min:x_max]
-    cropped_image2 = image2[y_min:y_max, x_min:x_max]
-    
-    return cropped_image1, cropped_image2, (x_min, y_min), (x_max, y_max)
+    return x_min, y_min, x_max, y_max
 
 def highlight_motion(frame1, frame2, keypoints1, descriptors1, keypoints2, descriptors2, s, m=1, selectionSide=30):
     global bitThresh
@@ -140,6 +138,7 @@ def highlight_motion(frame1, frame2, keypoints1, descriptors1, keypoints2, descr
     # Annotate the frame
     annotated_frame = frame2.copy()
     for x, y in zip(xs, ys):
+        x, y = x + top_left[0], y + top_left[1]
         top_left_corner = (x - selectionSide // 2, y - selectionSide // 2)
         bottom_right_corner = (x + selectionSide // 2, y + selectionSide // 2)
         cv2.rectangle(annotated_frame, top_left_corner, bottom_right_corner, (0, 255, 0), 2)
@@ -151,6 +150,7 @@ def crop_frame(frame, crop_percentage):
     height, width = frame.shape[:2]
     crop_size_y, crop_size_x = int(height * (crop_percentage / 100.0)), int(width * (crop_percentage / 100.0))
     center_x, center_y = width // 2, height // 2
+
     x1 = max(center_x - crop_size_x // 2, 0)
     x2 = min(center_x + crop_size_x // 2, width)
     y1 = max(center_y - crop_size_y // 2, 0)
@@ -175,12 +175,12 @@ def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70
     cap.set(cv2.CAP_PROP_POS_FRAMES, int(start_time * fps))
     current_time = start_time
 
-    ret, frame = cap.read()
+    ret, prev_frame = cap.read()
     if not ret:
         print("Error: Cannot read first frame.")
         return
 
-    prev_frame = crop_frame(frame, crop_percentage)
+    prev_frame = crop_frame(prev_frame, crop_percentage)
     # 1. Downscale image
     prev_small = cv2.resize(prev_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
     # 2. Detect ORB keypoints and descriptors
@@ -193,32 +193,32 @@ def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70
     while cap.isOpened() and current_time <= end_time:
         frame_number = int(current_time * fps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-        ret, frame = cap.read()
+        ret, curr_frame = cap.read()
         if not ret:
             break
     
         start_tick = cv2.getTickCount()  #Start timing
     
-        curr_frame = crop_frame(frame, crop_percentage)
+        curr_frame = crop_frame(curr_frame, crop_percentage)
         # 1. Downscale image
         curr_small = cv2.resize(curr_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
         # 2. Detect ORB keypoints and descriptors
-        curr_keypoints, curr_descriptors = orb.detectAndCompute(prev_small, None)
+        curr_keypoints, curr_descriptors = orb.detectAndCompute(curr_small, None)
         # 3. Check if descriptors are None or too few keypoints
         if  curr_descriptors is None  or len(curr_descriptors) < 2:
             raise ValueError("Not enoght keypoints found in the first frame.")
         detected_frame = highlight_motion(prev_frame, curr_frame, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s)
 
-
         prev_frame = curr_frame
         prev_small = curr_small
         prev_keypoints = curr_keypoints
         prev_descriptors = curr_descriptors
+
         current_time += 5 / fps
 
         end_tick = cv2.getTickCount()  #End timing
         time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000  # convert to ms
-    
+
         cv2.imshow("Real-time Object Detection", detected_frame)
     
         if cv2.waitKey(30) & 0xFF == 27:  # ESC key to stop
