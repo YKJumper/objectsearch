@@ -7,7 +7,7 @@ from collections import deque
 bitBrightSelector = 0.65
 bitThresh = 40
 
-def align_images(image1, image2, s=0.25, numOfKeypoints=500):
+def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descriptors2, s):
     """
     Aligns image2 to image1 using downscaled images and FLANN+LSH matching.
     
@@ -23,20 +23,6 @@ def align_images(image1, image2, s=0.25, numOfKeypoints=500):
         left_top (tuple): Top-left corner of intersection region.
         right_bottom (tuple): Bottom-right corner of intersection region.
     """
-    # 1. Downscale both images
-    small_image1 = cv2.resize(image1, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
-    small_image2 = cv2.resize(image2, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
-
-    # 2. Detect ORB keypoints and descriptors
-    orb = cv2.ORB_create(nfeatures=numOfKeypoints)
-    keypoints1, descriptors1 = orb.detectAndCompute(small_image1, None)
-    keypoints2, descriptors2 = orb.detectAndCompute(small_image2, None)
-
-    if descriptors1 is None or descriptors2 is None:
-        return image1, image2, (0, 0), (0, 0)
-    if len(descriptors1) < 2 or len(descriptors2) < 2:
-        return image1, image2, (0, 0), (0, 0)
-
     # 3. Use FLANN + LSH for binary descriptors
     index_params = dict(algorithm=6,  # FLANN_INDEX_LSH
                         table_number=6,
@@ -52,7 +38,7 @@ def align_images(image1, image2, s=0.25, numOfKeypoints=500):
     for pair in matches:
         if len(pair) == 2:
             m, n = pair
-            if m.distance < 0.95 * n.distance:
+            if m.distance < 0.75 * n.distance:
                 good_matches.append(m)
 
 
@@ -68,10 +54,7 @@ def align_images(image1, image2, s=0.25, numOfKeypoints=500):
     M_small, inliers = cv2.estimateAffine2D(
     src_pts, dst_pts,
     method=cv2.RANSAC,
-    ransacReprojThreshold=5.0,  # Looser threshold for speed
-    maxIters=1000,              # Fewer iterations
-    confidence=0.98,            # Slightly reduced confidence
-    refineIters=10)             # Fewer refinement steps
+    ransacReprojThreshold=5.0)
 
     if M_small is None:
         return image1, image2, (0, 0), (0, 0)
@@ -136,12 +119,12 @@ def compute_intersection(image1, image2, M):
     
     return cropped_image1, cropped_image2, (x_min, y_min), (x_max, y_max)
 
-def highlight_motion(frame1, frame2, m=1, selectionSide=30):
+def highlight_motion(frame1, frame2, keypoints1, descriptors1, keypoints2, descriptors2, s, m=1, selectionSide=30):
     global bitThresh
     gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
 
-    aligned1, aligned2, top_left, right_bottom = align_images(gray1, gray2)
+    aligned1, aligned2, top_left, right_bottom = align_images(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s)
     diff = cv2.absdiff(aligned1, aligned2)
 
     # Flatten the difference image and find indices of top m brightest pixels
@@ -177,7 +160,8 @@ def crop_frame(frame, crop_percentage):
 
     return frame[y1:y2, x1:x2]
 
-def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, output_file="output_with_motion.avi", crop_percentage=70):
+def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70, s=0.20, numOfKeypoints=500, save_output=False, output_file="output_with_motion.avi"):
+    orb = cv2.ORB_create(nfeatures=numOfKeypoints)
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Cannot open video.")
@@ -201,39 +185,57 @@ def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, o
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
         writer = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
 
-    ret, frame = cap.read()
+    ret, prev_frame = cap.read()
     if not ret:
         print("Error: Cannot read first frame.")
         return
-    prev_frame = crop_frame(frame, crop_percentage)
+ 
+    prev_frame = crop_frame(prev_frame, crop_percentage)
+    # 1. Downscale image
+    prev_small = cv2.resize(prev_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
+    # 2. Detect ORB keypoints and descriptors
+    prev_keypoints, prev_descriptors = orb.detectAndCompute(prev_small, None)
+    # 3. Check if descriptors are None or too few keypoints
+    if  prev_descriptors is None  or len( prev_descriptors) < 2:
+        raise ValueError("Not enoght keypoints found in the first frame.")
 
     while cap.isOpened() and current_time <= end_time:
         frame_number = int(current_time * fps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-        ret, frame = cap.read()
+        ret, curr_frame = cap.read()
         if not ret:
             break
 
         start_tick = cv2.getTickCount()  #Start timing
+    
+        curr_frame = crop_frame(curr_frame, crop_percentage)
+        # 1. Downscale image
+        curr_small = cv2.resize(curr_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
+        # 2. Detect ORB keypoints and descriptors
+        curr_keypoints, curr_descriptors = orb.detectAndCompute(prev_small, None)
+        # 3. Check if descriptors are None or too few keypoints
+        if  curr_descriptors is None  or len(curr_descriptors) < 2:
+            raise ValueError("Not enoght keypoints found in the next frame.")
 
-        curr_frame = crop_frame(frame, crop_percentage)
-        annotated_frame = highlight_motion(prev_frame, curr_frame)
-        
+        detected_frame = highlight_motion(prev_frame, curr_frame, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s)
+
+        prev_frame = curr_frame
+        prev_small = curr_small
+        prev_keypoints = curr_keypoints
+        prev_descriptors = curr_descriptors
+        current_time += 5 / fps
+
         end_tick = cv2.getTickCount()  #End timing
         time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000  # convert to ms
     
-
-        cv2.imshow("Real-time Object Detection", annotated_frame)
-        if save_output:
-            writer.write(annotated_frame)
-
-        key = cv2.waitKey(int(1000 / fps))
-        if key == 27:  # ESC
+        cv2.imshow("Real-time Object Detection", detected_frame)
+    
+        if cv2.waitKey(30) & 0xFF == 27:  # ESC key to stop
             break
-
-        prev_frame = curr_frame
-        current_time += 3 / fps
         print(f"Real-time Object Detection - {time_ms:.2f} ms")
+
+        if save_output:
+            writer.write(detected_frame)
 
     cap.release()
     if writer:
@@ -241,7 +243,7 @@ def play_and_detect(videoFile, start_time=0, end_time=None, save_output=False, o
     cv2.destroyAllWindows()
 
 # Play from 33s to 60s, enable GPU, smoothing, and save output
-play_and_detect("pidor2.mp4", start_time=0, end_time=80, save_output=True)
+play_and_detect("FullCars.mp4", start_time=35, end_time=80, save_output=True)
 
 # "orlan.mp4", start_time=11,
 # "FullCars.mp4", start_time=35,
