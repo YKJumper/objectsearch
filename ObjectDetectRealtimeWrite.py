@@ -134,6 +134,7 @@ def highlight_motion(frame1, frame2, keypoints1, descriptors1, keypoints2, descr
     # Annotate the frame
     annotated_frame = frame2.copy()
     for x, y in zip(xs, ys):
+        x, y = x + top_left[0], y + top_left[1]
         top_left_corner = (x - selectionSide // 2, y - selectionSide // 2)
         bottom_right_corner = (x + selectionSide // 2, y + selectionSide // 2)
         cv2.rectangle(annotated_frame, top_left_corner, bottom_right_corner, (0, 255, 0), 2)
@@ -212,7 +213,6 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
             detected_frame = prev_frame
         else:
             detected_frame = highlight_motion(prev_frame, curr_frame, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s)
-            # raise ValueError("Not enoght keypoints found in the next frame.")
 
         prev_frame = curr_frame
         prev_small = curr_small
@@ -238,7 +238,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
         writer.release()
     cv2.destroyAllWindows()
 
-# Play from 33s to 60s, enable GPU, smoothing, and save output
+# Play from 33s to 60s, smoothing, and save output
 play_and_detect("FullCars.mp4", start_time=35, end_time=80, fpsStep=2, crop_percentage = 70, s=0.25, numOfKeypoints=500, save_output=False)
 
 # "orlan.mp4", start_time=11,

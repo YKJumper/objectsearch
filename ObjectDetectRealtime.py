@@ -1,10 +1,6 @@
 import cv2
 import numpy as np
 
-# Global parameters
-bitBrightSelector = 0.75
-bitThresh = 40
-
 def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descriptors2, s):
     """
     Aligns image2 to image1 using downscaled images and FLANN+LSH matching.
@@ -158,7 +154,7 @@ def crop_frame(frame, crop_percentage):
 
     return frame[y1:y2, x1:x2]
 
-def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70, s=0.25, numOfKeypoints=500):
+def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s, numOfKeypoints, save_output=False, output_file="output_with_motion.avi"):
     orb = cv2.ORB_create(nfeatures=numOfKeypoints)
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
@@ -206,16 +202,17 @@ def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70
         curr_keypoints, curr_descriptors = orb.detectAndCompute(curr_small, None)
         # 3. Check if descriptors are None or too few keypoints
         if  curr_descriptors is None  or len(curr_descriptors) < 2:
-            raise ValueError("Not enoght keypoints found in the first frame.")
-        detected_frame = highlight_motion(prev_frame, curr_frame, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s)
+            print("Not enoght keypoints found in the next frame.")
+            detected_frame = prev_frame
+        else:
+            detected_frame = highlight_motion(prev_frame, curr_frame, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s)
 
         prev_frame = curr_frame
         prev_small = curr_small
         prev_keypoints = curr_keypoints
         prev_descriptors = curr_descriptors
 
-        current_time += 5 / fps
-        print(f"Real-time Object Detection - {time_ms:.2f} ms")
+        current_time += fpsStep / fps
 
         end_tick = cv2.getTickCount()  #End timing
         time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000  # convert to ms
