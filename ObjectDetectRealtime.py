@@ -111,11 +111,7 @@ def compute_intersection(h, w, M):
     
     return x_min, y_min, x_max, y_max
 
-def highlight_motion(frame1, frame2, keypoints1, descriptors1, keypoints2, descriptors2, s, m=1, selectionSide=30):
-    global bitThresh
-    gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
-
+def highlight_motion(gray1, gray2, frame2, keypoints1, descriptors1, keypoints2, descriptors2, s, m=1, selectionSide=30):
     aligned1, aligned2, top_left, right_bottom = align_images(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s)
     diff = cv2.absdiff(aligned1, aligned2)
 
@@ -181,7 +177,9 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
     prev_small = cv2.resize(prev_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
     # 2. Detect ORB keypoints and descriptors
     prev_keypoints, prev_descriptors = orb.detectAndCompute(prev_small, None)
-    # 3. Check if descriptors are None or too few keypoints
+    # 3. Convert frame to grayscale
+    prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+    # 4. Check if descriptors are None or too few keypoints
     if  prev_descriptors is None  or len( prev_descriptors) < 2:
         raise ValueError("Not enoght keypoints found in the first frame.")
 
@@ -200,15 +198,18 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
         curr_small = cv2.resize(curr_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
         # 2. Detect ORB keypoints and descriptors
         curr_keypoints, curr_descriptors = orb.detectAndCompute(curr_small, None)
-        # 3. Check if descriptors are None or too few keypoints
+        # 3. Convert frame to grayscale
+        curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
+        # 4. Check if descriptors are None or too few keypoints
         if  curr_descriptors is None  or len(curr_descriptors) < 2:
             print("Not enoght keypoints found in the next frame.")
             detected_frame = prev_frame
         else:
-            detected_frame = highlight_motion(prev_frame, curr_frame, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s)
+            detected_frame = highlight_motion(prev_gray, curr_gray, curr_frame, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s)
 
         prev_frame = curr_frame
         prev_small = curr_small
+        prev_gray = curr_gray
         prev_keypoints = curr_keypoints
         prev_descriptors = curr_descriptors
 
@@ -227,4 +228,4 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
     cv2.destroyAllWindows()
 
 # Run real-time detection
-play_and_detect("FullCars.mp4", start_time=35, end_time=80)
+play_and_detect("FullCars.mp4", start_time=35, end_time=80, fpsStep=2, crop_percentage = 70, s=0.25, numOfKeypoints=500, save_output=False)
