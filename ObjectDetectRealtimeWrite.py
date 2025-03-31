@@ -1,11 +1,5 @@
 import cv2
 import numpy as np
-import time
-from collections import deque
-
-# Global parameters
-bitBrightSelector = 0.65
-bitThresh = 40
 
 def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descriptors2, s):
     """
