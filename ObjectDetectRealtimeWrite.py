@@ -4,7 +4,7 @@ import numpy as np
 def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descriptors2, s):
     """
     Aligns image2 to image1 using downscaled images and FLANN+LSH matching.
-    
+
     Parameters:
         image1 (ndarray): Reference image.
         image2 (ndarray): Image to be aligned.
@@ -14,7 +14,7 @@ def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descripto
         descriptors2 : Resized to be aligned image keypoint descriptors.
         s (float): Downscale factor (e.g., 0.5).
         numOfKeypoints (int): Maximum number of keypoints to detect.
-    
+
     Returns:
         aligned_image1 (ndarray): Original image1 (unaltered).
         aligned_image2 (ndarray): Transformed image2 aligned to image1.
@@ -41,7 +41,6 @@ def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descripto
             m, n = pair
             if m.distance < 0.75 * n.distance:
                 good_matches.append(m)
-
 
     if len(good_matches) < 10:
         return image1, image2, (0, 0), (0, 0)
@@ -78,62 +77,68 @@ def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descripto
 def compute_intersection(h, w, M):
     """
     Returns image1 and image2 intersection region coordinates based on transformation matrix M.
-    
+
     Parameters:
         h, w (integer) -- image1 height and width
         M (numpy.ndarray): 2x3 Affine transformation matrix.
-    
+
     Returns:
         tuple: the intersection left upper and right bottom region coordinates.
     """
     # Define corners of image1
     corners = np.array([[0, 0], [w, 0], [0, h], [w, h]], dtype=np.float32)
-    
+
     # Transform corners using M
     transformed_corners = cv2.transform(np.array([corners]), M)[0]
-    
+
     # Extract individual transformed corner coordinates
     left_top_x, left_top_y         = transformed_corners[0]
     right_top_x, right_top_y       = transformed_corners[1]
     left_bottom_x, left_bottom_y   = transformed_corners[2]
     right_bottom_x, right_bottom_y = transformed_corners[3]
-    
+
     # Compute bounding box limits using specific corner coordinates
     x_min = max(0, int(np.ceil(max(left_top_x, left_bottom_x))))
     y_min = max(0, int(np.ceil(max(left_top_y, right_top_y))))
     x_max = min(w, int(np.floor(min(right_bottom_x, right_top_x))))
     y_max = min(h, int(np.floor(min(right_bottom_y, left_bottom_y))))
-    
+
     # Ensure valid intersection
     if x_max <= x_min or y_max <= y_min:
         x_min, y_min, x_max, y_max = 0, 0, w, h
         print("Error: No valid intersection found.")
-    
+
     return x_min, y_min, x_max, y_max
 
 def highlight_motion(gray1, gray2, frame2, keypoints1, descriptors1, keypoints2, descriptors2, s, m=1, selectionSide=30):
     aligned1, aligned2, top_left, right_bottom = align_images(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s)
     diff = cv2.absdiff(aligned1, aligned2)
 
-    # Flatten the difference image and find indices of top m brightest pixels
-    flat = diff.flatten()
-    if m >= len(flat):
-        m = len(flat)
-
-    top_indices = np.argpartition(flat, -m)[-m:]
-    top_indices = top_indices[np.argsort(flat[top_indices])[::-1]]  # sort descending by intensity
-
-    # Convert flat indices to (x, y) coordinates
-    h, w = diff.shape
-    ys, xs = np.unravel_index(top_indices, (h, w))
-
     # Annotate the frame
     annotated_frame = frame2
-    for x, y in zip(xs, ys):
-        x, y = x + top_left[0], y + top_left[1]
-        top_left_corner = (x - selectionSide // 2, y - selectionSide // 2)
-        bottom_right_corner = (x + selectionSide // 2, y + selectionSide // 2)
-        cv2.rectangle(annotated_frame, top_left_corner, bottom_right_corner, (0, 255, 0), 2)
+
+    # Hihglight the maxLoc position
+    if m == 1:
+        (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
+        cv2.rectangle(annotated_frame, (maxLoc[0]-selectionSide//2 + top_left[0], maxLoc[1]-selectionSide//2 + top_left[1]), (maxLoc[0] + selectionSide//2 + top_left[0], maxLoc[1] + selectionSide//2 + top_left[1]), (0, 255, 0), 2)
+    else:
+        # Flatten the difference image and find indices of top m brightest pixels
+        flat = diff.flatten()
+        if m >= len(flat):
+            m = len(flat)
+
+        top_indices = np.argpartition(flat, -m)[-m:]
+        top_indices = top_indices[np.argsort(flat[top_indices])[::-1]]  # sort descending by intensity
+
+        # Convert flat indices to (x, y) coordinates
+        h, w = diff.shape
+        ys, xs = np.unravel_index(top_indices, (h, w))
+
+        for x, y in zip(xs, ys):
+            x, y = x + top_left[0], y + top_left[1]
+            top_left_corner = (x - selectionSide // 2, y - selectionSide // 2)
+            bottom_right_corner = (x + selectionSide // 2, y + selectionSide // 2)
+            cv2.rectangle(annotated_frame, top_left_corner, bottom_right_corner, (0, 255, 0), 2)
 
     return annotated_frame
 
@@ -179,7 +184,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
     if not ret:
         print("Error: Cannot read first frame.")
         return
- 
+
     prev_frame = crop_frame(prev_frame, crop_percentage)
     # 1. Downscale image
     prev_small = cv2.resize(prev_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
@@ -199,7 +204,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
             break
 
         start_tick = cv2.getTickCount()  #Start timing
-    
+
         curr_frame = crop_frame(curr_frame, crop_percentage)
         # 1. Downscale image
         curr_small = cv2.resize(curr_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
@@ -224,9 +229,9 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
 
         end_tick = cv2.getTickCount()  #End timing
         time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000  # convert to ms
-    
+
         cv2.imshow("Real-time Object Detection", detected_frame)
-    
+
         if cv2.waitKey(30) & 0xFF == 27:  # ESC key to stop
             break
         print(f"Real-time Object Detection - {time_ms:.2f} ms")
