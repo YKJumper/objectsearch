@@ -238,7 +238,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
         writer.release()
     cv2.destroyAllWindows()
 
-# Play from 33s to 60s, smoothing, and save output
+# Play, smoothing, and save output
 play_and_detect("FullCars.mp4", start_time=35, end_time=80, fpsStep=2, crop_percentage = 70, s=0.25, numOfKeypoints=500, save_output=False)
 
 # "orlan.mp4", start_time=11,
