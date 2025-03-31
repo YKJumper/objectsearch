@@ -128,7 +128,7 @@ def highlight_motion(gray1, gray2, frame2, keypoints1, descriptors1, keypoints2,
     ys, xs = np.unravel_index(top_indices, (h, w))
 
     # Annotate the frame
-    annotated_frame = frame2.copy()
+    annotated_frame = frame2
     for x, y in zip(xs, ys):
         x, y = x + top_left[0], y + top_left[1]
         top_left_corner = (x - selectionSide // 2, y - selectionSide // 2)
@@ -228,4 +228,4 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
     cv2.destroyAllWindows()
 
 # Run real-time detection
-play_and_detect("FullCars.mp4", start_time=35, end_time=80, fpsStep=2, crop_percentage = 70, s=0.25, numOfKeypoints=500, save_output=False)
+play_and_detect("FullCars.mp4", start_time=35, end_time=80, fpsStep=3, crop_percentage = 70, s=0.25, numOfKeypoints=500, save_output=False)

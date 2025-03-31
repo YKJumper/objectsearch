@@ -128,7 +128,7 @@ def highlight_motion(gray1, gray2, frame2, keypoints1, descriptors1, keypoints2,
     ys, xs = np.unravel_index(top_indices, (h, w))
 
     # Annotate the frame
-    annotated_frame = frame2.copy()
+    annotated_frame = frame2
     for x, y in zip(xs, ys):
         x, y = x + top_left[0], y + top_left[1]
         top_left_corner = (x - selectionSide // 2, y - selectionSide // 2)
