@@ -215,6 +215,7 @@ def play_and_detect(videoFile, start_time=0, end_time=None, crop_percentage = 70
         prev_descriptors = curr_descriptors
 
         current_time += 5 / fps
+        print(f"Real-time Object Detection - {time_ms:.2f} ms")
 
         end_tick = cv2.getTickCount()  #End timing
         time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000  # convert to ms
