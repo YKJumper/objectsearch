@@ -159,7 +159,7 @@ def crop_frame(frame, crop_percentage):
 
     return frame[y1:y2, x1:x2]
 
-def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage = 50, s=0.5, numOfKeypoints=500, save_output=False, output_file="output_with_motion.avi"):
+def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s, numOfKeypoints, save_output=False, output_file="output_with_motion.avi"):
     orb = cv2.ORB_create(nfeatures=numOfKeypoints)
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
@@ -220,8 +220,6 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage = 
             detected_frame = highlight_motion(prev_frame, curr_frame, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s)
             # raise ValueError("Not enoght keypoints found in the next frame.")
 
-        detected_frame = highlight_motion(prev_frame, curr_frame, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s)
-
         prev_frame = curr_frame
         prev_small = curr_small
         prev_keypoints = curr_keypoints
@@ -247,7 +245,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage = 
     cv2.destroyAllWindows()
 
 # Play from 33s to 60s, enable GPU, smoothing, and save output
-play_and_detect("Mavik.mp4", start_time=0, end_time=80, fpsStep=2, save_output=True)
+play_and_detect("FullCars.mp4", start_time=35, end_time=80, fpsStep=2, crop_percentage = 70, s=0.25, numOfKeypoints=500, save_output=False)
 
 # "orlan.mp4", start_time=11,
 # "FullCars.mp4", start_time=35,
