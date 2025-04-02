@@ -33,6 +33,7 @@ def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descripto
     flann = cv2.FlannBasedMatcher(index_params, search_params)
 
     matches = flann.knnMatch(descriptors1, descriptors2, k=2)
+    del flann
 
     # 4. Apply Lowe's ratio test
     good_matches = []
@@ -264,7 +265,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
     cv2.destroyAllWindows()
 
 # Play, smoothing, and save output
-play_and_detect("pidor2.mp4", start_time=8, end_time=38, fpsStep=3, crop_percentage = 55, es=0.5, s=0.5, numOfKeypoints=250, save_output=True)
+play_and_detect("FullCars.mp4", start_time=8, end_time=38, fpsStep=3, crop_percentage = 75, es=0.5, s=0.5, numOfKeypoints=250, save_output=True)
 
 # "orlan.mp4", start_time=11,
 # "FullCars.mp4", start_time=35,
