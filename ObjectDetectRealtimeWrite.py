@@ -33,6 +33,7 @@ def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descripto
     flann = cv2.FlannBasedMatcher(index_params, search_params)
 
     matches = flann.knnMatch(descriptors1, descriptors2, k=2)
+    del flann
 
     # 4. Apply Lowe's ratio test
     good_matches = []
