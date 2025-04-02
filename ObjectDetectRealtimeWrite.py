@@ -153,15 +153,18 @@ def crop_frame(frame, crop_percentage):
     return frame[y1:y2, x1:x2]
 
 def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, es, s, numOfKeypoints, save_output=False, output_file="output_with_motion.avi"):
-    orb = cv2.ORB_create(nfeatures=numOfKeypoints)
+    # Replace ORB with FAST + BRIEF
+    fast = cv2.FastFeatureDetector_create(threshold=25, nonmaxSuppression=True)
+    brief = cv2.xfeatures2d.BriefDescriptorExtractor_create()
+
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Cannot open video.")
         return
 
     fps = cap.get(cv2.CAP_PROP_FPS)
-    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)*crop_percentage/ 100.0*es)
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)*crop_percentage/ 100.0*es)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) * crop_percentage / 100.0 * es)
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) * crop_percentage / 100.0 * es)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     total_time = total_frames / fps
 
@@ -190,15 +193,16 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
 
     # 1. Downscale image
     prev_small = cv2.resize(prev_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
-    # 2. Detect ORB keypoints and descriptors
-    prev_keypoints, prev_descriptors = orb.detectAndCompute(prev_small, None)
+    # 2. FAST keypoints + BRIEF descriptors
+    prev_keypoints = fast.detect(prev_small, None)
+    prev_keypoints, prev_descriptors = brief.compute(prev_small, prev_keypoints)
     # 3. Convert frame to grayscale
     prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
     # 4. Check if descriptors are None or too few keypoints
-    if  prev_descriptors is None  or len( prev_descriptors) < 2:
-        raise ValueError("Not enoght keypoints found in the first frame.")
-    
-    # Calculate averege processing time
+    if prev_descriptors is None or len(prev_descriptors) < 2:
+        raise ValueError("Not enough keypoints found in the first frame.")
+
+    # Calculate average processing time
     N = 0
     time_avg = 0.0
 
@@ -209,7 +213,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
         if not ret:
             break
 
-        start_tick = cv2.getTickCount()  #Start timing
+        start_tick = cv2.getTickCount()  # Start timing
 
         # 0. Crop the frame
         if crop_percentage < 100:
@@ -218,13 +222,14 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
             curr_frame = cv2.resize(curr_frame, (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
         # 1. Downscale image
         curr_small = cv2.resize(curr_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
-        # 2. Detect ORB keypoints and descriptors
-        curr_keypoints, curr_descriptors = orb.detectAndCompute(curr_small, None)
+        # 2. FAST keypoints + BRIEF descriptors
+        curr_keypoints = fast.detect(curr_small, None)
+        curr_keypoints, curr_descriptors = brief.compute(curr_small, curr_keypoints)
         # 3. Convert frame to grayscale
         curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
         # 4. Check if descriptors are None or too few keypoints
-        if  curr_descriptors is None  or len(curr_descriptors) < 2:
-            print("Not enoght keypoints found in the next frame.")
+        if curr_descriptors is None or len(curr_descriptors) < 2:
+            print("Not enough keypoints found in the next frame.")
             detected_frame = prev_frame
         else:
             detected_frame = highlight_motion(prev_gray, curr_gray, curr_frame, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s)
@@ -237,9 +242,9 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
 
         current_time += fpsStep / fps
 
-        end_tick = cv2.getTickCount()  #End timing
+        end_tick = cv2.getTickCount()  # End timing
         time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000  # convert to ms
-        
+
         # Calculate average processing time
         N += 1
         time_avg += (time_ms - time_avg) / N
@@ -247,11 +252,11 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
 
         cv2.imshow("Real-time Object Detection", detected_frame)
 
-        if cv2.waitKey(30) & 0xFF == 27:  # ESC key to stop
-            break
-
         if save_output:
             writer.write(detected_frame)
+
+        if cv2.waitKey(30) & 0xFF == 27:  # ESC key to stop
+            break
 
     cap.release()
     if writer:

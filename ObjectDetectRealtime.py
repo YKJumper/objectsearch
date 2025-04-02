@@ -154,7 +154,9 @@ def crop_frame(frame, crop_percentage):
     return frame[y1:y2, x1:x2]
 
 def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, es, s, numOfKeypoints):
-    orb = cv2.ORB_create(nfeatures=numOfKeypoints)
+    fast = cv2.FastFeatureDetector_create(threshold=25, nonmaxSuppression=True)
+    brief = cv2.xfeatures2d.BriefDescriptorExtractor_create()  # For descriptor extraction
+    
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
         print("Error: Cannot open video.")
@@ -182,15 +184,16 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
         prev_frame = cv2.resize(prev_frame, (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
     # 1. Downscale image
     prev_small = cv2.resize(prev_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
-    # 2. Detect ORB keypoints and descriptors
-    prev_keypoints, prev_descriptors = orb.detectAndCompute(prev_small, None)
+    # 2. Detect FAST keypoints
+    prev_keypoints = fast.detect(prev_small, None)
+    prev_keypoints, prev_descriptors = brief.compute(prev_small, prev_keypoints)
     # 3. Convert frame to grayscale
     prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
     # 4. Check if descriptors are None or too few keypoints
-    if  prev_descriptors is None  or len( prev_descriptors) < 2:
-        raise ValueError("Not enoght keypoints found in the first frame.")
+    if prev_descriptors is None or len(prev_descriptors) < 2:
+        raise ValueError("Not enough keypoints found in the first frame.")
 
-    # Calculate averege processing time
+    # Calculate average processing time
     N = 0
     time_avg = 0.0
 
@@ -201,7 +204,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
         if not ret:
             break
 
-        start_tick = cv2.getTickCount()  #Start timing
+        start_tick = cv2.getTickCount()  # Start timing
 
         # 0. Crop the frame
         if crop_percentage < 100:
@@ -210,13 +213,14 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
             curr_frame = cv2.resize(curr_frame, (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
         # 1. Downscale image
         curr_small = cv2.resize(curr_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
-        # 2. Detect ORB keypoints and descriptors
-        curr_keypoints, curr_descriptors = orb.detectAndCompute(curr_small, None)
+        # 2. Detect FAST keypoints
+        curr_keypoints = fast.detect(curr_small, None)
+        curr_keypoints, curr_descriptors = brief.compute(curr_small, curr_keypoints)
         # 3. Convert frame to grayscale
         curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
         # 4. Check if descriptors are None or too few keypoints
-        if  curr_descriptors is None  or len(curr_descriptors) < 2:
-            print("Not enoght keypoints found in the next frame.")
+        if curr_descriptors is None or len(curr_descriptors) < 2:
+            print("Not enough keypoints found in the next frame.")
             detected_frame = prev_frame
         else:
             detected_frame = highlight_motion(prev_gray, curr_gray, curr_frame, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s)
@@ -229,7 +233,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
 
         current_time += fpsStep / fps
 
-        end_tick = cv2.getTickCount()  #End timing
+        end_tick = cv2.getTickCount()  # End timing
         time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000  # convert to ms
 
         # Calculate average processing time
@@ -238,13 +242,13 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
         print(f"Average processing time: {time_avg:.2f} ms")
 
         cv2.imshow("Real-time Object Detection", detected_frame)
-    
+
         if cv2.waitKey(30) & 0xFF == 27:  # ESC key to stop
             break
-
 
     cap.release()
     cv2.destroyAllWindows()
 
+
 # Run real-time detection
-play_and_detect("FullCars.mp4", start_time=38, end_time=388, fpsStep=3, crop_percentage = 75, es=0.5, s=0.5, numOfKeypoints=250)
+play_and_detect("pidor2.mp4", start_time=8, end_time=38, fpsStep=3, crop_percentage = 60, es=0.5, s=0.5, numOfKeypoints=250)
