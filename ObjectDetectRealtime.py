@@ -242,4 +242,4 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
     cv2.destroyAllWindows()
 
 # Run real-time detection
-play_and_detect("pidor2.mp4", start_time=0, end_time=999, fpsStep=3, crop_percentage = 52, es=0.5, s=0.5, numOfKeypoints=250)
+play_and_detect("pidor2.mp4", start_time=8, end_time=38, fpsStep=3, crop_percentage = 52, es=0.5, s=0.5, numOfKeypoints=250)
