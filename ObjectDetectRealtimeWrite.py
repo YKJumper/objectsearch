@@ -155,7 +155,7 @@ def crop_frame(frame, crop_percentage):
 
     return frame[y1:y2, x1:x2]
 
-def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s, numOfKeypoints, save_output=False, output_file="output_with_motion.avi"):
+def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, es, s, numOfKeypoints, save_output=False, output_file="output_with_motion.avi"):
     orb = cv2.ORB_create(nfeatures=numOfKeypoints)
     cap = cv2.VideoCapture(videoFile)
     if not cap.isOpened():
@@ -163,8 +163,8 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
         return
 
     fps = cap.get(cv2.CAP_PROP_FPS)
-    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)*crop_percentage/ 100.0)
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)*crop_percentage/ 100.0)
+    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)*crop_percentage/ 100.0*es)
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)*crop_percentage/ 100.0*es)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     total_time = total_frames / fps
 
@@ -185,7 +185,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
         print("Error: Cannot read first frame.")
         return
 
-    prev_frame = crop_frame(prev_frame, crop_percentage)
+    prev_frame = cv2.resize(crop_frame(prev_frame, crop_percentage), (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
     # 1. Downscale image
     prev_small = cv2.resize(prev_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
     # 2. Detect ORB keypoints and descriptors
@@ -195,6 +195,10 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
     # 4. Check if descriptors are None or too few keypoints
     if  prev_descriptors is None  or len( prev_descriptors) < 2:
         raise ValueError("Not enoght keypoints found in the first frame.")
+    
+    # Calculate averege processing time
+    N = 0
+    time_avg = 0.0
 
     while cap.isOpened() and current_time <= end_time:
         frame_number = int(current_time * fps)
@@ -205,7 +209,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
 
         start_tick = cv2.getTickCount()  #Start timing
 
-        curr_frame = crop_frame(curr_frame, crop_percentage)
+        curr_frame = cv2.resize(crop_frame(curr_frame, crop_percentage), (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
         # 1. Downscale image
         curr_small = cv2.resize(curr_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
         # 2. Detect ORB keypoints and descriptors
@@ -229,12 +233,16 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
 
         end_tick = cv2.getTickCount()  #End timing
         time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000  # convert to ms
+        
+        # Calculate average processing time
+        N += 1
+        time_avg += (time_ms - time_avg) / N
+        print(f"Average processing time: {time_avg:.2f} ms")
 
         cv2.imshow("Real-time Object Detection", detected_frame)
 
         if cv2.waitKey(30) & 0xFF == 27:  # ESC key to stop
             break
-        print(f"Real-time Object Detection - {time_ms:.2f} ms")
 
         if save_output:
             writer.write(detected_frame)
@@ -245,7 +253,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, s
     cv2.destroyAllWindows()
 
 # Play, smoothing, and save output
-play_and_detect("FullCars.mp4", start_time=35, end_time=80, fpsStep=2, crop_percentage = 70, s=0.25, numOfKeypoints=500, save_output=False)
+play_and_detect("pidor2.mp4", start_time=8, end_time=38, fpsStep=3, crop_percentage = 52, es=0.5, s=0.5, numOfKeypoints=250, save_output=True)
 
 # "orlan.mp4", start_time=11,
 # "FullCars.mp4", start_time=35,
