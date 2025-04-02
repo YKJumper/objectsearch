@@ -114,13 +114,10 @@ def highlight_motion(gray1, gray2, frame2, keypoints1, descriptors1, keypoints2,
     aligned1, aligned2, top_left, right_bottom = align_images(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s)
     diff = cv2.absdiff(aligned1, aligned2)
 
-    # Annotate the frame
-    annotated_frame = frame2
-
     # Hihglight the maxLoc position
     if m == 1:
         (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
-        cv2.rectangle(annotated_frame, (maxLoc[0]-selectionSide//2 + top_left[0], maxLoc[1]-selectionSide//2 + top_left[1]), (maxLoc[0] + selectionSide//2 + top_left[0], maxLoc[1] + selectionSide//2 + top_left[1]), (0, 255, 0), 2)
+        cv2.rectangle(frame2, (maxLoc[0]-selectionSide//2 + top_left[0], maxLoc[1]-selectionSide//2 + top_left[1]), (maxLoc[0] + selectionSide//2 + top_left[0], maxLoc[1] + selectionSide//2 + top_left[1]), (0, 255, 0), 2)
     else:
         # Flatten the difference image and find indices of top m brightest pixels
         flat = diff.flatten()
@@ -138,9 +135,9 @@ def highlight_motion(gray1, gray2, frame2, keypoints1, descriptors1, keypoints2,
             x, y = x + top_left[0], y + top_left[1]
             top_left_corner = (x - selectionSide // 2, y - selectionSide // 2)
             bottom_right_corner = (x + selectionSide // 2, y + selectionSide // 2)
-            cv2.rectangle(annotated_frame, top_left_corner, bottom_right_corner, (0, 255, 0), 2)
+            cv2.rectangle(frame2, top_left_corner, bottom_right_corner, (0, 255, 0), 2)
 
-    return annotated_frame
+    return frame2
 
 def crop_frame(frame, crop_percentage):
     # Crop the central square region
@@ -185,7 +182,12 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
         print("Error: Cannot read first frame.")
         return
 
-    prev_frame = cv2.resize(crop_frame(prev_frame, crop_percentage), (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
+    # 0. Crop the frame
+    if crop_percentage < 100:
+        prev_frame = cv2.resize(crop_frame(prev_frame, crop_percentage), (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
+    else:
+        prev_frame = cv2.resize(prev_frame, (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
+
     # 1. Downscale image
     prev_small = cv2.resize(prev_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
     # 2. Detect ORB keypoints and descriptors
@@ -209,7 +211,11 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
 
         start_tick = cv2.getTickCount()  #Start timing
 
-        curr_frame = cv2.resize(crop_frame(curr_frame, crop_percentage), (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
+        # 0. Crop the frame
+        if crop_percentage < 100:
+            curr_frame = cv2.resize(crop_frame(curr_frame, crop_percentage), (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
+        else:
+            curr_frame = cv2.resize(curr_frame, (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
         # 1. Downscale image
         curr_small = cv2.resize(curr_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
         # 2. Detect ORB keypoints and descriptors
@@ -253,7 +259,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
     cv2.destroyAllWindows()
 
 # Play, smoothing, and save output
-play_and_detect("pidor2.mp4", start_time=8, end_time=38, fpsStep=3, crop_percentage = 52, es=0.5, s=0.5, numOfKeypoints=250, save_output=True)
+play_and_detect("pidor2.mp4", start_time=8, end_time=38, fpsStep=3, crop_percentage = 55, es=0.5, s=0.5, numOfKeypoints=250, save_output=True)
 
 # "orlan.mp4", start_time=11,
 # "FullCars.mp4", start_time=35,
