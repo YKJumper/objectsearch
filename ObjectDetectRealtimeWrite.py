@@ -157,7 +157,7 @@ def detect_motion(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptor
         ys, xs = np.unravel_index(top_indices, (h, w))
 
         for x, y in zip(xs, ys):
-            coords.append(detection_area_left_top[0] + int((x + top_left[0])/es), detection_area_left_top[1] + int((y + top_left[1])/es))
+            coords.append((detection_area_left_top[0] + int((x + top_left[0])/es), detection_area_left_top[1] + int((y + top_left[1])/es)))
 
     return coords
 
