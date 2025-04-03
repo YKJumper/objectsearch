@@ -98,20 +98,55 @@ def compute_intersection(h, w, M):
 
     return x_min, y_min, x_max, y_max
 
-def highlight_motion(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s, m=1, selectionSide=30):
+def build_motion_boxes(coords, selectionSide):
     """
-    Returns bounding boxes of detected motion regions between two frames.
+    Converts motion coordinates into square bounding boxes.
+
+    Parameters:
+        coords (List[Tuple[int, int]]): List of (x, y) coordinates of motion points.
+        selectionSide (int): Side length of each square bounding box.
+
+    Returns:
+        List[Tuple[Tuple[int, int], Tuple[int, int]]]: List of (top_left, bottom_right) box coordinates.
     """
-    aligned1, aligned2, top_left, _ = align_images(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s)
+    half_side = selectionSide // 2
+    boxes = []
+
+    for x, y in coords:
+        top_left = (x - half_side, y - half_side)
+        bottom_right = (x + half_side, y + half_side)
+        boxes.append((top_left, bottom_right))
+
+    return boxes
+
+def detect_motion(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s, es, detection_area_left_top, m=1):
+    """
+    Returns coordinates of detected motion points between two frames.
+
+    Parameters:
+        gray1, gray2: Grayscale input frames.
+        keypoints1, descriptors1: ORB keypoints/descriptors from gray1.
+        keypoints2, descriptors2: ORB keypoints/descriptors from gray2.
+        s (float): Downscale factor used in alignment.
+        m (int): Number of motion points to return.
+
+    Returns:
+        List of (x, y) tuples: Coordinates in the original frame space.
+    """
+    aligned1, aligned2, top_left, _ = align_images(
+        gray1, gray2,
+        keypoints1, descriptors1,
+        keypoints2, descriptors2,
+        s
+    )
     diff = cv2.absdiff(aligned1, aligned2)
 
-    boxes = []
+    coords = []
     if m == 1:
         _, _, _, maxLoc = cv2.minMaxLoc(diff)
-        center_x, center_y = maxLoc[0] + top_left[0], maxLoc[1] + top_left[1]
-        half_side = selectionSide // 2
-        boxes.append(((center_x - half_side, center_y - half_side),
-                      (center_x + half_side, center_y + half_side)))
+        x = detection_area_left_top[0] + int((maxLoc[0] + top_left[0])/es)
+        y = detection_area_left_top[1] + int((maxLoc[1] + top_left[1])/es)
+        coords.append((x, y))
     else:
         flat = diff.flatten()
         m = min(m, len(flat))
@@ -120,15 +155,11 @@ def highlight_motion(gray1, gray2, keypoints1, descriptors1, keypoints2, descrip
 
         h, w = diff.shape
         ys, xs = np.unravel_index(top_indices, (h, w))
-        half_side = selectionSide // 2
 
         for x, y in zip(xs, ys):
-            x += top_left[0]
-            y += top_left[1]
-            boxes.append(((x - half_side, y - half_side),
-                          (x + half_side, y + half_side)))
-    return boxes
+            coords.append(detection_area_left_top[0] + int((x + top_left[0])/es), detection_area_left_top[1] + int((y + top_left[1])/es))
 
+    return coords
 
 def crop_frame(frame, crop_percentage):
     """Crop the central region of the frame based on crop_percentage."""
@@ -151,7 +182,8 @@ def crop_and_resize(frame, crop_percentage, es):
         frame = crop_frame(frame, crop_percentage)
     return cv2.resize(frame, (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
 
-def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, es, s, numOfKeypoints):
+def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, es, s, numOfKeypoints, selectionSide=30,
+                    save_output=False, output_file="output_with_motion.avi"):
     orb = cv2.ORB_create(nfeatures=numOfKeypoints)
     cap = cv2.VideoCapture(videoFile)
 
@@ -160,6 +192,9 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
         return
 
     fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    detection_area_left_top = int(frame_width*(1-crop_percentage/100)/2), int(frame_height*(1-crop_percentage/100)/2)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     total_time = total_frames / fps
 
@@ -168,12 +203,12 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
     current_time = start_time
 
     # Read and process the first frame
-    ret, prev_frame = cap.read()
+    ret, frame = cap.read()
     if not ret:
         print("Error: Cannot read first frame.")
         return
 
-    prev_frame = crop_and_resize(prev_frame, crop_percentage, es)
+    prev_frame = crop_and_resize(frame, crop_percentage, es)
     prev_small = cv2.resize(prev_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
     prev_keypoints, prev_descriptors = orb.detectAndCompute(prev_small, None)
     prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
@@ -186,31 +221,26 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
 
     while cap.isOpened() and current_time <= end_time:
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(current_time * fps))
-        ret, curr_frame = cap.read()
+        ret, frame = cap.read()
         if not ret:
             break
 
         start_tick = cv2.getTickCount()
 
-        curr_frame = crop_and_resize(curr_frame, crop_percentage, es)
+        curr_frame = crop_and_resize(frame, crop_percentage, es)
         curr_small = cv2.resize(curr_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
         curr_keypoints, curr_descriptors = orb.detectAndCompute(curr_small, None)
         curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
 
-        detected_frame = curr_frame
         if curr_descriptors is None or len(curr_descriptors) < 2:
             print("Warning: Not enough keypoints found in the current frame.")
         else:
-            motion_boxes = highlight_motion(
+            objects_coords = detect_motion(
                 prev_gray, curr_gray,
                 prev_keypoints, prev_descriptors,
                 curr_keypoints, curr_descriptors,
-                s
-            )
-            # Draw detected motion boxes on the current frame
-            for top_left, bottom_right in motion_boxes:
-                cv2.rectangle(detected_frame, top_left, bottom_right, (0, 255, 0), 2)
-            
+                s, es, detection_area_left_top)
+
         # Update previous values only when detection is successful
         prev_frame, prev_small, prev_gray = curr_frame, curr_small, curr_gray
         prev_keypoints, prev_descriptors = curr_keypoints, curr_descriptors
@@ -221,9 +251,14 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
         end_tick = cv2.getTickCount()
         time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000
         time_avg += (time_ms - time_avg) / (N := N + 1)
-
         print(f"Average processing time: {time_avg:.2f} ms")
-        cv2.imshow("Real-time Object Detection", detected_frame)
+
+        # Draw detected motion boxes on the current frame
+        motion_boxes = build_motion_boxes(objects_coords, selectionSide)
+        for tl, br in motion_boxes:
+            cv2.rectangle(frame, tl, br, (0, 255, 0), 2)
+            
+        cv2.imshow("Real-time Object Detection", frame)
 
         if cv2.waitKey(30) & 0xFF == 27:  # ESC key
             break
@@ -232,4 +267,4 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
     cv2.destroyAllWindows()
 
 # Run real-time detection
-play_and_detect("FullCars.mp4", start_time=38, end_time=388, fpsStep=3, crop_percentage = 75, es=0.5, s=0.5, numOfKeypoints=250)
+play_and_detect("FullCars.mp4", start_time=38, end_time=388, fpsStep=3, crop_percentage = 100, es=0.5, s=0.5, numOfKeypoints=250)
