@@ -267,4 +267,4 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
     cv2.destroyAllWindows()
 
 # Run real-time detection
-play_and_detect("FullCars.mp4", start_time=38, end_time=388, fpsStep=3, crop_percentage = 100, es=0.5, s=0.5, numOfKeypoints=250)
+play_and_detect("FullCars.mp4", start_time=38, end_time=388, fpsStep=3, crop_percentage = 75, es=0.5, s=0.5, numOfKeypoints=250)
