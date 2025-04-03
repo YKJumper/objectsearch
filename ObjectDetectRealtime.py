@@ -225,6 +225,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
         if not ret:
             break
 
+        # Start detection time
         start_tick = cv2.getTickCount()
 
         curr_frame = crop_and_resize(frame, crop_percentage, es)
