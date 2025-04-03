@@ -3,39 +3,31 @@ import numpy as np
 
 def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descriptors2, s):
     """
-    Aligns image2 to image1 using downscaled images and FLANN+LSH matching.
+    Aligns image2 to image1 using FLANN+LSH matching and affine transformation.
 
     Parameters:
         image1 (ndarray): Reference image.
-        image2 (ndarray): Image to be aligned.
-        keypoints1 : Resized reference image keypoints.
-        descriptors1 : Resized reference image keypoint descriptors.
-        keypoints2 : Resized to be aligned image keypoints.
-        descriptors2 : Resized to be aligned image keypoint descriptors.
-        s (float): Downscale factor (e.g., 0.5).
-        numOfKeypoints (int): Maximum number of keypoints to detect.
+        image2 (ndarray): Image to align.
+        keypoints1, keypoints2: Keypoints from downscaled images.
+        descriptors1, descriptors2: Descriptors from downscaled images.
+        s (float): Downscale factor.
 
     Returns:
-        aligned_image1 (ndarray): Original image1 (unaltered).
-        aligned_image2 (ndarray): Transformed image2 aligned to image1.
-        left_top (tuple): Top-left corner of intersection region.
-        right_bottom (tuple): Bottom-right corner of intersection region.
+        aligned_image1 (ndarray): Cropped reference image.
+        aligned_image2 (ndarray): Aligned and cropped image2.
+        left_top (tuple): Top-left intersection coordinates.
+        right_bottom (tuple): Bottom-right intersection coordinates.
     """
-    # Get image dimensions
     h, w = image1.shape[:2]
 
-    # 3. Use FLANN + LSH for binary descriptors
-    index_params = dict(algorithm=6,  # FLANN_INDEX_LSH
-                        table_number=6,
-                        key_size=12,
-                        multi_probe_level=1)
+    # Configure FLANN for binary descriptors (e.g., ORB, BRIEF)
+    index_params = dict(algorithm=6, table_number=6, key_size=12, multi_probe_level=1)
     search_params = dict(checks=50)
-    flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-    matches = flann.knnMatch(descriptors1, descriptors2, k=2)
-    del flann
+    matcher = cv2.FlannBasedMatcher(index_params, search_params)
+    matches = matcher.knnMatch(descriptors1, descriptors2, k=2)
 
-    # 4. Apply Lowe's ratio test
+    # Apply Lowe's ratio test
     good_matches = []
     for pair in matches:
         if len(pair) == 2:
@@ -46,213 +38,207 @@ def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descripto
     if len(good_matches) < 10:
         return image1, image2, (0, 0), (0, 0)
 
-    # 5. Extract matched points
+    # Extract matched coordinates
     src_pts = np.float32([keypoints2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
     dst_pts = np.float32([keypoints1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
 
-    # 6. Estimate affine transform on small images
-    # M_small, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
-    M_small, inliers = cv2.estimateAffine2D(
-    src_pts, dst_pts,
-    method=cv2.RANSAC,
-    ransacReprojThreshold=5.0)
+    # Estimate affine transformation using RANSAC
+    M_small, _ = cv2.estimateAffine2D(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=5.0)
 
     if M_small is None:
         return image1, image2, (0, 0), (0, 0)
 
-    # 7. Scale the transform matrix to match original image scale
-    M = M_small.copy()
-    M[:, 2] /= s
+    # Scale matrix to original image size
+    M_small[:, 2] /= s
 
-    # 8. Apply transformation to original full-sized image2
-    aligned_image2 = cv2.warpAffine(image2, M, (w, h))
+    # Warp image2 using scaled transform
+    aligned_image2 = cv2.warpAffine(image2, M_small, (w, h))
 
-    # 9. Compute intersection (optional external function)
-    x_min, y_min, x_max, y_max = compute_intersection(h, w, M)
-    # Crop images to the intersection region
+    # Compute intersection region (external function)
+    x_min, y_min, x_max, y_max = compute_intersection(h, w, M_small)
+
+    # Crop both images to the overlapping region
     aligned_image1 = image1[y_min:y_max, x_min:x_max]
     aligned_image2 = aligned_image2[y_min:y_max, x_min:x_max]
 
     return aligned_image1, aligned_image2, (x_min, y_min), (x_max, y_max)
 
+
 def compute_intersection(h, w, M):
     """
-    Returns image1 and image2 intersection region coordinates based on transformation matrix M.
+    Returns the intersection region coordinates of image1 after applying an affine transformation.
 
     Parameters:
-        h, w (integer) -- image1 height and width
-        M (numpy.ndarray): 2x3 Affine transformation matrix.
+        h (int): Height of image1.
+        w (int): Width of image1.
+        M (np.ndarray): 2x3 Affine transformation matrix.
 
     Returns:
-        tuple: the intersection left upper and right bottom region coordinates.
+        tuple: (x_min, y_min, x_max, y_max) coordinates of the intersection region.
     """
-    # Define corners of image1
+    # Define corners of the image
     corners = np.array([[0, 0], [w, 0], [0, h], [w, h]], dtype=np.float32)
+    
+    # Apply affine transformation
+    transformed = cv2.transform(corners[None], M)[0]
 
-    # Transform corners using M
-    transformed_corners = cv2.transform(np.array([corners]), M)[0]
+    # Vectorized computation of bounding box
+    x_coords = transformed[:, 0]
+    y_coords = transformed[:, 1]
 
-    # Extract individual transformed corner coordinates
-    left_top_x, left_top_y         = transformed_corners[0]
-    right_top_x, right_top_y       = transformed_corners[1]
-    left_bottom_x, left_bottom_y   = transformed_corners[2]
-    right_bottom_x, right_bottom_y = transformed_corners[3]
+    x_min = max(0, int(np.ceil(np.max(x_coords[[0, 2]]))))
+    x_max = min(w, int(np.floor(np.min(x_coords[[1, 3]]))))
+    y_min = max(0, int(np.ceil(np.max(y_coords[[0, 1]]))))
+    y_max = min(h, int(np.floor(np.min(y_coords[[2, 3]]))))
 
-    # Compute bounding box limits using specific corner coordinates
-    x_min = max(0, int(np.ceil(max(left_top_x, left_bottom_x))))
-    y_min = max(0, int(np.ceil(max(left_top_y, right_top_y))))
-    x_max = min(w, int(np.floor(min(right_bottom_x, right_top_x))))
-    y_max = min(h, int(np.floor(min(right_bottom_y, left_bottom_y))))
-
-    # Ensure valid intersection
+    # Validate intersection region
     if x_max <= x_min or y_max <= y_min:
-        x_min, y_min, x_max, y_max = 0, 0, w, h
         print("Error: No valid intersection found.")
+        return 0, 0, w, h
 
     return x_min, y_min, x_max, y_max
 
-def highlight_motion(gray1, gray2, frame2, keypoints1, descriptors1, keypoints2, descriptors2, s, m=1, selectionSide=30):
-    aligned1, aligned2, top_left, right_bottom = align_images(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s)
+def highlight_motion(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s, m=1, selectionSide=30):
+    """
+    Returns bounding boxes of detected motion regions between two frames.
+    """
+    aligned1, aligned2, top_left, _ = align_images(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s)
     diff = cv2.absdiff(aligned1, aligned2)
 
-    # Hihglight the maxLoc position
+    boxes = []
     if m == 1:
-        (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(diff)
-        cv2.rectangle(frame2, (maxLoc[0]-selectionSide//2 + top_left[0], maxLoc[1]-selectionSide//2 + top_left[1]), (maxLoc[0] + selectionSide//2 + top_left[0], maxLoc[1] + selectionSide//2 + top_left[1]), (0, 255, 0), 2)
+        _, _, _, maxLoc = cv2.minMaxLoc(diff)
+        center_x, center_y = maxLoc[0] + top_left[0], maxLoc[1] + top_left[1]
+        half_side = selectionSide // 2
+        boxes.append(((center_x - half_side, center_y - half_side),
+                      (center_x + half_side, center_y + half_side)))
     else:
-        # Flatten the difference image and find indices of top m brightest pixels
         flat = diff.flatten()
-        if m >= len(flat):
-            m = len(flat)
-
+        m = min(m, len(flat))
         top_indices = np.argpartition(flat, -m)[-m:]
-        top_indices = top_indices[np.argsort(flat[top_indices])[::-1]]  # sort descending by intensity
+        top_indices = top_indices[np.argsort(flat[top_indices])[::-1]]
 
-        # Convert flat indices to (x, y) coordinates
         h, w = diff.shape
         ys, xs = np.unravel_index(top_indices, (h, w))
+        half_side = selectionSide // 2
 
         for x, y in zip(xs, ys):
-            x, y = x + top_left[0], y + top_left[1]
-            top_left_corner = (x - selectionSide // 2, y - selectionSide // 2)
-            bottom_right_corner = (x + selectionSide // 2, y + selectionSide // 2)
-            cv2.rectangle(frame2, top_left_corner, bottom_right_corner, (0, 255, 0), 2)
+            x += top_left[0]
+            y += top_left[1]
+            boxes.append(((x - half_side, y - half_side),
+                          (x + half_side, y + half_side)))
+    return boxes
 
-    return frame2
 
 def crop_frame(frame, crop_percentage):
-    # Crop the central square region
+    """Crop the central region of the frame based on crop_percentage."""
     height, width = frame.shape[:2]
-    crop_size_y, crop_size_x = int(height * (crop_percentage / 100.0)), int(width * (crop_percentage / 100.0))
-    center_x, center_y = width // 2, height // 2
+    crop_factor = crop_percentage / 100.0
 
-    x1 = max(center_x - crop_size_x // 2, 0)
-    x2 = min(center_x + crop_size_x // 2, width)
-    y1 = max(center_y - crop_size_y // 2, 0)
-    y2 = min(center_y + crop_size_y // 2, height)
+    crop_h = int(height * crop_factor)
+    crop_w = int(width * crop_factor)
+
+    y1 = (height - crop_h) // 2
+    y2 = y1 + crop_h
+    x1 = (width - crop_w) // 2
+    x2 = x1 + crop_w
 
     return frame[y1:y2, x1:x2]
 
-def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, es, s, numOfKeypoints, save_output=False, output_file="output_with_motion.avi"):
+def crop_and_resize(frame, crop_percentage, es):
+    """Crop frame by percentage and resize with scale `es`."""
+    if crop_percentage < 100:
+        frame = crop_frame(frame, crop_percentage)
+    return cv2.resize(frame, (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
+
+def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, es, s, numOfKeypoints,
+                    save_output=False, output_file="output_with_motion.avi"):
     orb = cv2.ORB_create(nfeatures=numOfKeypoints)
     cap = cv2.VideoCapture(videoFile)
+
     if not cap.isOpened():
         print("Error: Cannot open video.")
         return
 
     fps = cap.get(cv2.CAP_PROP_FPS)
-    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)*crop_percentage/ 100.0*es)
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)*crop_percentage/ 100.0*es)
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) * crop_percentage / 100.0 * es)
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) * crop_percentage / 100.0 * es)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     total_time = total_frames / fps
 
-    if end_time is None or end_time > total_time:
-        end_time = total_time
-
+    end_time = min(end_time if end_time else total_time, total_time)
     cap.set(cv2.CAP_PROP_POS_FRAMES, int(start_time * fps))
     current_time = start_time
 
-    # Setup video writer
+    # Initialize video writer if needed
     writer = None
     if save_output:
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        writer = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
+        writer = cv2.VideoWriter(output_file, fourcc, fps, (frame_width, frame_height))
 
+    # Read and process the first frame
     ret, prev_frame = cap.read()
     if not ret:
         print("Error: Cannot read first frame.")
         return
 
-    # 0. Crop the frame
-    if crop_percentage < 100:
-        prev_frame = cv2.resize(crop_frame(prev_frame, crop_percentage), (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
-    else:
-        prev_frame = cv2.resize(prev_frame, (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
-
-    # 1. Downscale image
+    prev_frame = crop_and_resize(prev_frame, crop_percentage, es)
     prev_small = cv2.resize(prev_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
-    # 2. Detect ORB keypoints and descriptors
     prev_keypoints, prev_descriptors = orb.detectAndCompute(prev_small, None)
-    # 3. Convert frame to grayscale
     prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
-    # 4. Check if descriptors are None or too few keypoints
-    if  prev_descriptors is None  or len( prev_descriptors) < 2:
-        raise ValueError("Not enoght keypoints found in the first frame.")
-    
-    # Calculate averege processing time
-    N = 0
-    time_avg = 0.0
+
+    if prev_descriptors is None or len(prev_descriptors) < 2:
+        raise ValueError("Not enough keypoints found in the first frame.")
+
+    # Performance monitoring
+    N, time_avg = 0, 0.0
 
     while cap.isOpened() and current_time <= end_time:
-        frame_number = int(current_time * fps)
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(current_time * fps))
         ret, curr_frame = cap.read()
         if not ret:
             break
 
-        start_tick = cv2.getTickCount()  #Start timing
+        start_tick = cv2.getTickCount()
 
-        # 0. Crop the frame
-        if crop_percentage < 100:
-            curr_frame = cv2.resize(crop_frame(curr_frame, crop_percentage), (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
-        else:
-            curr_frame = cv2.resize(curr_frame, (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
-        # 1. Downscale image
+        curr_frame = crop_and_resize(curr_frame, crop_percentage, es)
         curr_small = cv2.resize(curr_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
-        # 2. Detect ORB keypoints and descriptors
         curr_keypoints, curr_descriptors = orb.detectAndCompute(curr_small, None)
-        # 3. Convert frame to grayscale
         curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
-        # 4. Check if descriptors are None or too few keypoints
-        if  curr_descriptors is None  or len(curr_descriptors) < 2:
-            print("Not enoght keypoints found in the next frame.")
-            detected_frame = prev_frame
-        else:
-            detected_frame = highlight_motion(prev_gray, curr_gray, curr_frame, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s)
 
-        prev_frame = curr_frame
-        prev_small = curr_small
-        prev_gray = curr_gray
-        prev_keypoints = curr_keypoints
-        prev_descriptors = curr_descriptors
+        detected_frame = curr_frame
+        if curr_descriptors is None or len(curr_descriptors) < 2:
+            print("Warning: Not enough keypoints found in the current frame.")
+        else:
+            motion_boxes = highlight_motion(
+                prev_gray, curr_gray,
+                prev_keypoints, prev_descriptors,
+                curr_keypoints, curr_descriptors,
+                s
+            )
+            # Draw detected motion boxes on the current frame
+            for top_left, bottom_right in motion_boxes:
+                cv2.rectangle(detected_frame, top_left, bottom_right, (0, 255, 0), 2)
+            
+        # Update previous values only when detection is successful
+        prev_frame, prev_small, prev_gray = curr_frame, curr_small, curr_gray
+        prev_keypoints, prev_descriptors = curr_keypoints, curr_descriptors
 
         current_time += fpsStep / fps
 
-        end_tick = cv2.getTickCount()  #End timing
-        time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000  # convert to ms
-        
-        # Calculate average processing time
-        N += 1
-        time_avg += (time_ms - time_avg) / N
+        # Time calculation
+        end_tick = cv2.getTickCount()
+        time_ms = (end_tick - start_tick) / cv2.getTickFrequency() * 1000
+        time_avg += (time_ms - time_avg) / (N := N + 1)
+
         print(f"Average processing time: {time_avg:.2f} ms")
-
         cv2.imshow("Real-time Object Detection", detected_frame)
-
-        if cv2.waitKey(30) & 0xFF == 27:  # ESC key to stop
-            break
 
         if save_output:
             writer.write(detected_frame)
+
+        if cv2.waitKey(30) & 0xFF == 27:  # ESC key
+            break
 
     cap.release()
     if writer:
