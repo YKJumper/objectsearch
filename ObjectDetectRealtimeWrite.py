@@ -249,7 +249,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
                 s, es, detection_area_left_top)
 
         # Update previous values only when detection is successful
-        prev_frame, prev_small, prev_gray = curr_frame, curr_small, curr_gray
+        prev_frame, prev_gray = curr_frame, curr_gray
         prev_keypoints, prev_descriptors = curr_keypoints, curr_descriptors
 
         current_time += fpsStep / fps

@@ -243,7 +243,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
                 s, es, detection_area_left_top)
 
         # Update previous values only when detection is successful
-        prev_frame, prev_small, prev_gray = curr_frame, curr_small, curr_gray
+        prev_frame, prev_gray = curr_frame, curr_gray
         prev_keypoints, prev_descriptors = curr_keypoints, curr_descriptors
 
         current_time += fpsStep / fps
@@ -268,4 +268,4 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
     cv2.destroyAllWindows()
 
 # Run real-time detection
-play_and_detect("FullCars.mp4", start_time=38, end_time=388, fpsStep=3, crop_percentage = 75, es=0.5, s=0.5, numOfKeypoints=250)
+play_and_detect("FullCars.mp4", start_time=38, end_time=388, fpsStep=4, crop_percentage = 60, es=0.5, s=0.5, numOfKeypoints=250)
