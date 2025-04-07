@@ -188,16 +188,15 @@ int playAndDetect(const string& videoFile, float start_time, float end_time, int
         return -1;
     }
 
-   
-    Mat prev_frame = crop_and_resize(frame, crop_percentage, es);
-
-    Mat prev_small;
-    resize(prev_frame, prev_small, Size(), s, s, INTER_AREA);
 
     // Make umOfKeypoints adaptive based on image resolution
-    int numOfKeypoints = static_cast<int>((prev_small.cols * prev_small.rows) / 10000);
+    int numOfKeypoints = static_cast<int>((frame.cols * frame.rows) / 10000);
     Ptr<ORB> orb = ORB::create(numOfKeypoints);
     Ptr<DescriptorMatcher> matcher = BFMatcher::create(NORM_HAMMING);
+   
+    Mat prev_frame = crop_and_resize(frame, crop_percentage, es);
+    Mat prev_small;
+    resize(prev_frame, prev_small, Size(), s, s, INTER_AREA);
     
     vector<KeyPoint> prev_keypoints;
     Mat prev_descriptors;
