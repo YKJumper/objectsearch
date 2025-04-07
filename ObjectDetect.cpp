@@ -50,7 +50,7 @@ tuple<Mat, Mat, Point, Point> align_images(
     }
 
     if (good_matches.size() < 10) {
-        return { image1.clone(), image2.clone(), Point(0, 0), Point(0, 0) };
+        return { image1, image2, Point(0, 0), Point(0, 0) };
     }
 
     vector<Point2f> src_pts, dst_pts;
@@ -61,7 +61,7 @@ tuple<Mat, Mat, Point, Point> align_images(
 
     Mat M_small = estimateAffine2D(src_pts, dst_pts, noArray(), RANSAC, 5.0);
     if (M_small.empty()) {
-        return { image1.clone(), image2.clone(), Point(0, 0), Point(0, 0) };
+        return { image1, image2, Point(0, 0), Point(0, 0) };
     }
 
     M_small.at<double>(0, 2) /= s;
@@ -71,8 +71,8 @@ tuple<Mat, Mat, Point, Point> align_images(
     warpAffine(image2, aligned_image2, M_small, Size(w, h));
 
     Rect roi = compute_intersection(h, w, M_small);
-    Mat aligned_image1 = image1(roi).clone();
-    aligned_image2 = aligned_image2(roi).clone();
+    Mat aligned_image1 = image1(roi);
+    aligned_image2 = aligned_image2(roi);
 
     return { aligned_image1, aligned_image2, roi.tl(), roi.br() };
 }
@@ -133,21 +133,23 @@ Mat crop_frame(const Mat& frame, float crop_percentage) {
     int crop_h = static_cast<int>(height * crop_factor);
     int crop_w = static_cast<int>(width * crop_factor);
     int y1 = (height - crop_h) / 2, x1 = (width - crop_w) / 2;
-    return frame(Rect(x1, y1, crop_w, crop_h)).clone();
+    return frame(Rect(x1, y1, crop_w, crop_h));
 }
 
 Mat crop_and_resize(const Mat& frame, float crop_percentage, float es) {
-    Mat cropped = crop_percentage < 100.0f ? crop_frame(frame, crop_percentage) : frame.clone();
+    Mat cropped = crop_percentage < 100.0f ? crop_frame(frame, crop_percentage) : frame;
     Mat resized;
     resize(cropped, resized, Size(), es, es, INTER_AREA);
     return resized;
 }
 
-int main() {
-    string videoFile = "FullCars.mp4";
-    float start_time = 38.0f, end_time = 388.0f, fpsStep = 4.0f;
-    float crop_percentage = 60.0f, es = 0.5f, s = 0.5f;
-    int numOfKeypoints = 250, selectionSide = 30;
+int playAndDetect(const string& videoFile, float start_time, float end_time, int fpsStep,
+    float crop_percentage, float es, float s, int numOfKeypoints, int selectionSide) {
+
+    // string videoFile = "FullCars.mp4";
+    // float start_time = 38.0f, end_time = 388.0f, fpsStep = 4.0f;
+    // float crop_percentage = 60.0f, es = 0.5f, s = 0.5f;
+    // int numOfKeypoints = 250, selectionSide = 30;
 
     Ptr<ORB> orb = ORB::create(numOfKeypoints);
     VideoCapture cap(videoFile);
@@ -212,8 +214,8 @@ int main() {
             objects_coords = detect_motion(prev_gray, curr_gray, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s, es, detection_area_left_top);
         }
 
-        prev_frame = curr_frame.clone();
-        prev_gray = curr_gray.clone();
+        prev_frame = curr_frame;
+        prev_gray = curr_gray;
         prev_keypoints = curr_keypoints;
         prev_descriptors = curr_descriptors;
 
@@ -234,5 +236,11 @@ int main() {
 
     cap.release();
     destroyAllWindows();
+    return 0;
+}
+
+
+int main() {
+    playAndDetect("/home/ykuharchuk/projects/objectsearch/FullCars.mp4", 38.0f, 388.0f, 3, 75.0f, 0.5f, 0.5f, 250, 30);
     return 0;
 }
