@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
+import heapq
 
-def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descriptors2, s):
+def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descriptors2, s, matcher):
     """
     Aligns image2 to image1 using FLANN+LSH matching and affine transformation.
 
@@ -19,12 +20,7 @@ def align_images(image1, image2, keypoints1, descriptors1, keypoints2, descripto
         right_bottom (tuple): Bottom-right intersection coordinates.
     """
     h, w = image1.shape[:2]
-
-    # Configure FLANN for binary descriptors (e.g., ORB, BRIEF)
-    index_params = dict(algorithm=6, table_number=6, key_size=12, multi_probe_level=1)
-    search_params = dict(checks=50)
-
-    matcher = cv2.FlannBasedMatcher(index_params, search_params)
+    
     matches = matcher.knnMatch(descriptors1, descriptors2, k=2)
 
     # Apply Lowe's ratio test
@@ -119,7 +115,7 @@ def build_motion_boxes(coords, selectionSide):
 
     return boxes
 
-def detect_motion(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s, es, detection_area_left_top, m=5):
+def detect_motion(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s, es, detection_area_left_top, matcher, m):
     """
     Returns coordinates of detected motion points between two frames.
 
@@ -137,7 +133,7 @@ def detect_motion(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptor
         gray1, gray2,
         keypoints1, descriptors1,
         keypoints2, descriptors2,
-        s
+        s, matcher
     )
     diff = cv2.absdiff(aligned1, aligned2)
 
@@ -182,9 +178,12 @@ def crop_and_resize(frame, crop_percentage, es):
         frame = crop_frame(frame, crop_percentage)
     return cv2.resize(frame, (0, 0), fx=es, fy=es, interpolation=cv2.INTER_AREA)
 
-def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, es, s, numOfKeypoints, selectionSide=30,
+def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, es, s, selectionSide=30, m=1,
                     save_output=False, output_file="output_with_motion.avi"):
-    orb = cv2.ORB_create(nfeatures=numOfKeypoints)
+    # Configure BFMatcher for binary descriptors like ORB
+    matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+
+
     cap = cv2.VideoCapture(videoFile)
 
     if not cap.isOpened():
@@ -208,6 +207,10 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
         print("Error: Cannot read first frame.")
         return
 
+    # Configure ORB detector
+    numOfKeypoints = (frame_width*frame_width) // 10000
+    orb = cv2.ORB_create(nfeatures=numOfKeypoints)
+    
     prev_frame = crop_and_resize(frame, crop_percentage, es)
     prev_small = cv2.resize(prev_frame, (0, 0), fx=s, fy=s, interpolation=cv2.INTER_AREA)
     prev_keypoints, prev_descriptors = orb.detectAndCompute(prev_small, None)
@@ -240,7 +243,7 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
                 prev_gray, curr_gray,
                 prev_keypoints, prev_descriptors,
                 curr_keypoints, curr_descriptors,
-                s, es, detection_area_left_top)
+                s, es, detection_area_left_top, matcher, m)
 
         # Update previous values only when detection is successful
         prev_frame, prev_gray = curr_frame, curr_gray
@@ -268,4 +271,4 @@ def play_and_detect(videoFile, start_time, end_time, fpsStep, crop_percentage, e
     cv2.destroyAllWindows()
 
 # Run real-time detection
-play_and_detect("FullCars.mp4", start_time=38, end_time=388, fpsStep=4, crop_percentage = 75, es=0.5, s=0.5, numOfKeypoints=250)
+play_and_detect("FullCars.mp4", start_time=38, end_time=388, fpsStep=7, crop_percentage = 75, es=0.5, s=0.5, m=5)
