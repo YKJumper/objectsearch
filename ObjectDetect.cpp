@@ -1,15 +1,11 @@
-
 #include <opencv2/opencv.hpp>
 #include <opencv2/features2d.hpp>
 #include <iostream>
-#include <vector>
-#include <algorithm>
 #include <numeric>
 
 using namespace cv;
 using namespace std;
 
-// Compute the intersection region after affine transformation
 Rect compute_intersection(int h, int w, const Mat& M) {
     vector<Point2f> corners = { {0, 0}, {(float)w, 0}, {0, (float)h}, {(float)w, (float)h} };
     vector<Point2f> transformed;
@@ -28,8 +24,7 @@ Rect compute_intersection(int h, int w, const Mat& M) {
     return Rect((int)x_min, (int)y_min, (int)(x_max - x_min), (int)(y_max - y_min));
 }
 
-// Align two images using keypoints and affine transform
-tuple<Mat, Mat, Point> align_images(
+tuple<Mat, Mat, Point, Point> align_images(
     const Mat& image1, const Mat& image2,
     const vector<KeyPoint>& keypoints1, const Mat& descriptors1,
     const vector<KeyPoint>& keypoints2, const Mat& descriptors2,
@@ -38,6 +33,7 @@ tuple<Mat, Mat, Point> align_images(
     int h = image1.rows;
     int w = image1.cols;
 
+    // Use FLANN with LSH
     Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
     Mat desc1f, desc2f;
     descriptors1.convertTo(desc1f, CV_32F);
@@ -54,7 +50,7 @@ tuple<Mat, Mat, Point> align_images(
     }
 
     if (good_matches.size() < 10) {
-        return { image1, image2, Point(0, 0) };
+        return { image1, image2, Point(0, 0), Point(0, 0) };
     }
 
     vector<Point2f> src_pts, dst_pts;
@@ -65,7 +61,7 @@ tuple<Mat, Mat, Point> align_images(
 
     Mat M_small = estimateAffine2D(src_pts, dst_pts, noArray(), RANSAC, 5.0);
     if (M_small.empty()) {
-        return { image1, image2, Point(0, 0) };
+        return { image1, image2, Point(0, 0), Point(0, 0) };
     }
 
     M_small.at<double>(0, 2) /= s;
@@ -75,34 +71,28 @@ tuple<Mat, Mat, Point> align_images(
     warpAffine(image2, aligned_image2, M_small, Size(w, h));
 
     Rect roi = compute_intersection(h, w, M_small);
-
     Mat aligned_image1 = image1(roi);
     aligned_image2 = aligned_image2(roi);
 
-    return { aligned_image1, aligned_image2, roi.tl() };
+    return { aligned_image1, aligned_image2, roi.tl(), roi.br() };
 }
 
-// Build bounding boxes from detected motion coordinates
 vector<pair<Point, Point>> build_motion_boxes(const vector<Point>& coords, int selectionSide) {
     int half_side = selectionSide / 2;
     vector<pair<Point, Point>> boxes;
-
-    for (const Point& p : coords) {
-        Point top_left(p.x - half_side, p.y - half_side);
-        Point bottom_right(p.x + half_side, p.y + half_side);
-        boxes.push_back({top_left, bottom_right});
+    for (const auto& p : coords) {
+        boxes.emplace_back(Point(p.x - half_side, p.y - half_side), Point(p.x + half_side, p.y + half_side));
     }
     return boxes;
 }
 
-// Detect motion between two grayscale images
 vector<Point> detect_motion(
     const Mat& gray1, const Mat& gray2,
     const vector<KeyPoint>& keypoints1, const Mat& descriptors1,
     const vector<KeyPoint>& keypoints2, const Mat& descriptors2,
     float s, float es, Point detection_area_left_top, int m = 1
 ) {
-    auto [aligned1, aligned2, top_left] = align_images(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s);
+    auto [aligned1, aligned2, top_left, _] = align_images(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s);
 
     Mat diff;
     absdiff(aligned1, aligned2, diff);
@@ -116,7 +106,7 @@ vector<Point> detect_motion(
         coords.emplace_back(x, y);
     } else {
         Mat flat = diff.reshape(1, 1);
-        vector<uchar> vec = flat;
+        vector<uchar> vec(flat.begin<uchar>(), flat.end<uchar>());
         vector<int> indices(vec.size());
         iota(indices.begin(), indices.end(), 0);
 
@@ -137,11 +127,24 @@ vector<Point> detect_motion(
     return coords;
 }
 
-int main() {
-    string videoFile = "FullCars.mp4";
-    float start_time = 38.0f, end_time = 388.0f, fpsStep = 3.0f;
-    float crop_percentage = 75.0f, es = 0.5f, s = 0.5f;
-    int numOfKeypoints = 250, selectionSide = 30;
+Mat crop_frame(const Mat& frame, float crop_percentage) {
+    int height = frame.rows, width = frame.cols;
+    float crop_factor = crop_percentage / 100.0;
+    int crop_h = static_cast<int>(height * crop_factor);
+    int crop_w = static_cast<int>(width * crop_factor);
+    int y1 = (height - crop_h) / 2, x1 = (width - crop_w) / 2;
+    return frame(Rect(x1, y1, crop_w, crop_h));
+}
+
+Mat crop_and_resize(const Mat& frame, float crop_percentage, float es) {
+    Mat cropped = crop_percentage < 100.0f ? crop_frame(frame, crop_percentage) : frame;
+    Mat resized;
+    resize(cropped, resized, Size(), es, es, INTER_AREA);
+    return resized;
+}
+
+int playAndDetect(const string& videoFile, float start_time, float end_time, int fpsStep,
+    float crop_percentage, float es, float s, int numOfKeypoints, int selectionSide) {
 
     Ptr<ORB> orb = ORB::create(numOfKeypoints);
     VideoCapture cap(videoFile);
@@ -154,12 +157,12 @@ int main() {
     double fps = cap.get(CAP_PROP_FPS);
     int frame_width = int(cap.get(CAP_PROP_FRAME_WIDTH));
     int frame_height = int(cap.get(CAP_PROP_FRAME_HEIGHT));
+    Point detection_area_left_top(int(frame_width * (1 - crop_percentage / 100) / 2), int(frame_height * (1 - crop_percentage / 100) / 2));
     int total_frames = int(cap.get(CAP_PROP_FRAME_COUNT));
     float total_time = total_frames / fps;
     end_time = min(end_time, total_time);
-
-    Point detection_area_left_top(int(frame_width * (1 - crop_percentage / 100) / 2), int(frame_height * (1 - crop_percentage / 100) / 2));
     cap.set(CAP_PROP_POS_FRAMES, int(start_time * fps));
+    float current_time = start_time;
 
     Mat frame;
     cap >> frame;
@@ -168,14 +171,14 @@ int main() {
         return -1;
     }
 
-    resize(frame, frame, Size(), es, es);
-    Mat prev_gray;
-    cvtColor(frame, prev_gray, COLOR_BGR2GRAY);
+    Mat prev_frame = crop_and_resize(frame, crop_percentage, es);
     Mat prev_small;
-    resize(prev_gray, prev_small, Size(), s, s);
+    resize(prev_frame, prev_small, Size(), s, s, INTER_AREA);
     vector<KeyPoint> prev_keypoints;
     Mat prev_descriptors;
     orb->detectAndCompute(prev_small, noArray(), prev_keypoints, prev_descriptors);
+    Mat prev_gray;
+    cvtColor(prev_frame, prev_gray, COLOR_BGR2GRAY);
 
     if (prev_descriptors.empty()) {
         cerr << "Error: Not enough keypoints in the first frame." << endl;
@@ -184,7 +187,6 @@ int main() {
 
     int N = 0;
     double time_avg = 0.0;
-    float current_time = start_time;
 
     while (cap.isOpened() && current_time <= end_time) {
         cap.set(CAP_PROP_POS_FRAMES, int(current_time * fps));
@@ -193,21 +195,21 @@ int main() {
 
         int64 start_tick = getTickCount();
 
-        resize(frame, frame, Size(), es, es);
-        Mat curr_gray;
-        cvtColor(frame, curr_gray, COLOR_BGR2GRAY);
+        Mat curr_frame = crop_and_resize(frame, crop_percentage, es);
         Mat curr_small;
-        resize(curr_gray, curr_small, Size(), s, s);
-
+        resize(curr_frame, curr_small, Size(), s, s, INTER_AREA);
         vector<KeyPoint> curr_keypoints;
         Mat curr_descriptors;
         orb->detectAndCompute(curr_small, noArray(), curr_keypoints, curr_descriptors);
+        Mat curr_gray;
+        cvtColor(curr_frame, curr_gray, COLOR_BGR2GRAY);
 
         vector<Point> objects_coords;
         if (!curr_descriptors.empty()) {
             objects_coords = detect_motion(prev_gray, curr_gray, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s, es, detection_area_left_top);
         }
 
+        prev_frame = curr_frame;
         prev_gray = curr_gray;
         prev_keypoints = curr_keypoints;
         prev_descriptors = curr_descriptors;
@@ -224,10 +226,16 @@ int main() {
         }
 
         imshow("Real-time Object Detection", frame);
-        if (waitKey(30) == 27) break; // ESC to quit
+        if (waitKey(30) == 27) break; // ESC
     }
 
     cap.release();
     destroyAllWindows();
+    return 0;
+}
+
+
+int main() {
+    playAndDetect("/home/ykuharchuk/projects/objectsearch/FullCars.mp4", 38.0f, 388.0f, 3, 75.0f, 0.5f, 0.5f, 250, 30);
     return 0;
 }

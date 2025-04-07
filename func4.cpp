@@ -286,6 +286,6 @@ int playAndDetect(const string& videoFile, int start_time, int end_time, int fps
 }
 
 int main() {
-    playAndDetect("/home/dmytro/object_movement/FullCars.mp4", 39, 388, 3, 75, 0.5, 0.5, 250);
+    playAndDetect("/home/ykuharchuk/projects/objectsearch/FullCars.mp4", 39, 388, 3, 75, 0.5, 0.5, 250);
     return 0;
 }
