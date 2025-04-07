@@ -90,7 +90,7 @@ vector<Point> detect_motion(
     const Mat& gray1, const Mat& gray2,
     const vector<KeyPoint>& keypoints1, const Mat& descriptors1,
     const vector<KeyPoint>& keypoints2, const Mat& descriptors2,
-    float s, float es, Point detection_area_left_top, int m = 1
+    float s, float es, Point detection_area_left_top, int m
 ) {
     auto [aligned1, aligned2, top_left, _] = align_images(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s);
 
@@ -144,7 +144,7 @@ Mat crop_and_resize(const Mat& frame, float crop_percentage, float es) {
 }
 
 int playAndDetect(const string& videoFile, float start_time, float end_time, int fpsStep,
-    float crop_percentage, float es, float s, int numOfKeypoints, int selectionSide) {
+    float crop_percentage, float es, float s, int numOfKeypoints, int selectionSide, int m) {
 
     Ptr<ORB> orb = ORB::create(numOfKeypoints);
     VideoCapture cap(videoFile);
@@ -206,7 +206,7 @@ int playAndDetect(const string& videoFile, float start_time, float end_time, int
 
         vector<Point> objects_coords;
         if (!curr_descriptors.empty()) {
-            objects_coords = detect_motion(prev_gray, curr_gray, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s, es, detection_area_left_top);
+            objects_coords = detect_motion(prev_gray, curr_gray, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s, es, detection_area_left_top, m);
         }
 
         prev_frame = curr_frame;
@@ -236,6 +236,6 @@ int playAndDetect(const string& videoFile, float start_time, float end_time, int
 
 
 int main() {
-    playAndDetect("/home/ykuharchuk/projects/objectsearch/FullCars.mp4", 38.0f, 388.0f, 3, 75.0f, 0.5f, 0.5f, 250, 30);
+    playAndDetect("/home/ykuharchuk/projects/objectsearch/FullCars.mp4", 38.0f, 388.0f, 3, 75.0f, 0.5f, 0.5f, 250, 30, 1);
     return 0;
 }
