@@ -146,11 +146,6 @@ Mat crop_and_resize(const Mat& frame, float crop_percentage, float es) {
 int playAndDetect(const string& videoFile, float start_time, float end_time, int fpsStep,
     float crop_percentage, float es, float s, int numOfKeypoints, int selectionSide) {
 
-    // string videoFile = "FullCars.mp4";
-    // float start_time = 38.0f, end_time = 388.0f, fpsStep = 4.0f;
-    // float crop_percentage = 60.0f, es = 0.5f, s = 0.5f;
-    // int numOfKeypoints = 250, selectionSide = 30;
-
     Ptr<ORB> orb = ORB::create(numOfKeypoints);
     VideoCapture cap(videoFile);
 
