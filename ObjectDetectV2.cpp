@@ -2,6 +2,7 @@
 #include <opencv2/features2d.hpp>
 #include <iostream>
 #include <numeric>
+#include <queue>
 
 using namespace cv;
 using namespace std;
@@ -28,44 +29,46 @@ tuple<Mat, Mat, Point, Point> align_images(
     const Mat& image1, const Mat& image2,
     const vector<KeyPoint>& keypoints1, const Mat& descriptors1,
     const vector<KeyPoint>& keypoints2, const Mat& descriptors2,
-    float s
+    float s,
+    const Ptr<DescriptorMatcher>& matcher
 ) {
     int h = image1.rows;
     int w = image1.cols;
 
-    // Use FLANN with LSH
-    Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
-    Mat desc1f, desc2f;
-    descriptors1.convertTo(desc1f, CV_32F);
-    descriptors2.convertTo(desc2f, CV_32F);
-
-    vector<vector<DMatch>> matches;
-    matcher->knnMatch(desc1f, desc2f, matches, 2);
-
-    vector<DMatch> good_matches;
-    for (auto& pair : matches) {
-        if (pair.size() == 2 && pair[0].distance < 0.75f * pair[1].distance) {
-            good_matches.push_back(pair[0]);
+    Mat M_small;
+    {
+        // Use passed BFMatcher with Hamming norm for binary ORB descriptors
+        vector<vector<DMatch>> matches;
+        matcher->knnMatch(descriptors1, descriptors2, matches, 2);
+    
+        vector<DMatch> good_matches;
+        for (const auto& pair : matches) {
+            if (pair.size() == 2 && pair[0].distance < 0.75f * pair[1].distance) {
+                good_matches.push_back(pair[0]);
+            }
         }
+    
+        if (good_matches.size() < 10) {
+            return { image1, image2, Point(0, 0), Point(0, 0) };
+        }
+    
+        vector<Point2f> src_pts, dst_pts;
+        for (const auto& match : good_matches) {
+            src_pts.push_back(keypoints2[match.trainIdx].pt);
+            dst_pts.push_back(keypoints1[match.queryIdx].pt);
+        }
+    
+        M_small = estimateAffine2D(src_pts, dst_pts, noArray(), RANSAC, 5.0);
+        if (M_small.empty()) {
+            return { image1, image2, Point(0, 0), Point(0, 0) };
+        }
+    
+        double* row0 = M_small.ptr<double>(0);
+        double* row1 = M_small.ptr<double>(1);
+        row0[2] /= s;
+        row1[2] /= s;
     }
-
-    if (good_matches.size() < 10) {
-        return { image1, image2, Point(0, 0), Point(0, 0) };
-    }
-
-    vector<Point2f> src_pts, dst_pts;
-    for (const auto& match : good_matches) {
-        src_pts.push_back(keypoints2[match.trainIdx].pt);
-        dst_pts.push_back(keypoints1[match.queryIdx].pt);
-    }
-
-    Mat M_small = estimateAffine2D(src_pts, dst_pts, noArray(), RANSAC, 5.0);
-    if (M_small.empty()) {
-        return { image1, image2, Point(0, 0), Point(0, 0) };
-    }
-
-    M_small.at<double>(0, 2) /= s;
-    M_small.at<double>(1, 2) /= s;
+    
 
     Mat aligned_image2;
     warpAffine(image2, aligned_image2, M_small, Size(w, h));
@@ -90,9 +93,9 @@ vector<Point> detect_motion(
     const Mat& gray1, const Mat& gray2,
     const vector<KeyPoint>& keypoints1, const Mat& descriptors1,
     const vector<KeyPoint>& keypoints2, const Mat& descriptors2,
-    float s, float es, Point detection_area_left_top, int m = 1
+    float s, float es, Point detection_area_left_top, const Ptr<DescriptorMatcher>& matcher, int m = 1
 ) {
-    auto [aligned1, aligned2, top_left, _] = align_images(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s);
+    auto [aligned1, aligned2, top_left, _] = align_images(gray1, gray2, keypoints1, descriptors1, keypoints2, descriptors2, s, matcher);
 
     Mat diff;
     absdiff(aligned1, aligned2, diff);
@@ -107,22 +110,38 @@ vector<Point> detect_motion(
     } else {
         Mat flat = diff.reshape(1, 1);
         vector<uchar> vec(flat.begin<uchar>(), flat.end<uchar>());
-        vector<int> indices(vec.size());
-        iota(indices.begin(), indices.end(), 0);
-
-        partial_sort(indices.begin(), indices.begin() + m, indices.end(), [&](int a, int b) {
-            return vec[a] > vec[b];
-        });
+        
+        using Pixel = pair<uchar, int>; // (intensity, index)
+        
+        // Min-heap to store top-m brightest pixels
+        priority_queue<Pixel, vector<Pixel>, greater<Pixel>> pq;
+        
+        for (int i = 0; i < (int)vec.size(); ++i) {
+            if ((int)pq.size() < m) {
+                pq.emplace(vec[i], i);
+            } else if (vec[i] > pq.top().first) {
+                pq.pop();
+                pq.emplace(vec[i], i);
+            }
+        }
+        
+        // Extract results from heap
+        vector<int> top_indices;
+        while (!pq.empty()) {
+            top_indices.push_back(pq.top().second);
+            pq.pop();
+        }
 
         int h = diff.rows, w = diff.cols;
-        for (int i = 0; i < m; ++i) {
-            int idx = indices[i];
-            int y = idx / w, x = idx % w;
+        for (int idx : top_indices) {
+            int y = idx / w;
+            int x = idx % w;
             coords.emplace_back(
                 detection_area_left_top.x + static_cast<int>((x + top_left.x) / es),
                 detection_area_left_top.y + static_cast<int>((y + top_left.y) / es)
             );
         }
+        
     }
     return coords;
 }
@@ -144,9 +163,7 @@ Mat crop_and_resize(const Mat& frame, float crop_percentage, float es) {
 }
 
 int playAndDetect(const string& videoFile, float start_time, float end_time, int fpsStep,
-    float crop_percentage, float es, float s, int numOfKeypoints, int selectionSide) {
-
-    Ptr<ORB> orb = ORB::create(numOfKeypoints);
+    float crop_percentage, float es, float s, int selectionSide) {
     VideoCapture cap(videoFile);
 
     if (!cap.isOpened()) {
@@ -171,9 +188,17 @@ int playAndDetect(const string& videoFile, float start_time, float end_time, int
         return -1;
     }
 
+   
     Mat prev_frame = crop_and_resize(frame, crop_percentage, es);
+
     Mat prev_small;
     resize(prev_frame, prev_small, Size(), s, s, INTER_AREA);
+
+    // Make umOfKeypoints adaptive based on image resolution
+    int numOfKeypoints = static_cast<int>((prev_small.cols * prev_small.rows) / 10000);
+    Ptr<ORB> orb = ORB::create(numOfKeypoints);
+    Ptr<DescriptorMatcher> matcher = BFMatcher::create(NORM_HAMMING);
+    
     vector<KeyPoint> prev_keypoints;
     Mat prev_descriptors;
     orb->detectAndCompute(prev_small, noArray(), prev_keypoints, prev_descriptors);
@@ -206,7 +231,7 @@ int playAndDetect(const string& videoFile, float start_time, float end_time, int
 
         vector<Point> objects_coords;
         if (!curr_descriptors.empty()) {
-            objects_coords = detect_motion(prev_gray, curr_gray, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s, es, detection_area_left_top);
+            objects_coords = detect_motion(prev_gray, curr_gray, prev_keypoints, prev_descriptors, curr_keypoints, curr_descriptors, s, es, detection_area_left_top, matcher);
         }
 
         prev_frame = curr_frame;
@@ -236,6 +261,6 @@ int playAndDetect(const string& videoFile, float start_time, float end_time, int
 
 
 int main() {
-    playAndDetect("/home/ykuharchuk/projects/objectsearch/FullCars.mp4", 38.0f, 388.0f, 3, 75.0f, 0.5f, 0.5f, 250, 30);
+    playAndDetect("/home/ykuharchuk/projects/objectsearch/FullCars.mp4", 38.0f, 388.0f, 3, 75.0f, 0.5f, 0.5f, 30);
     return 0;
 }
